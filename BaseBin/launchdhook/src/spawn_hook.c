@@ -1,8 +1,10 @@
 #include <spawn.h>
 #include "../systemhook/src/common/common.h"
+#include "../systemhook/src/common/envbuf.h"
 #include "boomerang.h"
 #include "crashreporter.h"
 #include "update.h"
+#include "respring_protection.h"
 #include <libjailbreak/util.h>
 #include <substrate.h>
 #include <mach-o/dyld.h>
@@ -189,7 +191,30 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 		}
 	}
 
-	return posix_spawn_hook_shared(pid, path, desc, argv, envp, __posix_spawn_orig_wrapper, systemwide_trust_file_by_path, platform_set_process_debugged, jbsetting(jetsamMultiplier));
+	bool isSB = is_springboard_process(path, argv);
+	char **customEnvp = (char **)envp;
+	bool freeEnvp = false;
+
+	if (isSB) {
+		if (respring_protection_should_safemode(path, argv)) {
+			customEnvp = envbuf_mutcopy((const char **)envp);
+			envbuf_setenv(&customEnvp, "_SafeMode", "1");
+			envbuf_setenv(&customEnvp, "_MSSafeMode", "1");
+			freeEnvp = true;
+		}
+	}
+
+	int ret = posix_spawn_hook_shared(pid, path, desc, argv, customEnvp, __posix_spawn_orig_wrapper, systemwide_trust_file_by_path, platform_set_process_debugged, jbsetting(jetsamMultiplier));
+
+	if (isSB && ret == 0) {
+		respring_protection_did_spawn_springboard();
+	}
+
+	if (freeEnvp) {
+		envbuf_free(customEnvp);
+	}
+
+	return ret;
 }
 
 void initSpawnHooks(void)

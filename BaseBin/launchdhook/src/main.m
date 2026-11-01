@@ -24,6 +24,7 @@
 #import "daemon_hook.h"
 #import "ipc_hook.h"
 #import "jetsam_hook.h"
+#import "respring_protection.h"
 #import "crashreporter.h"
 #import "boomerang.h"
 #import "update.h"
@@ -161,6 +162,7 @@ __attribute__((constructor)) static void initializer(void)
 	initSpawnHooks();
 	initIPCHooks();
 	initJetsamHook();
+	initRespringProtection();
 
 	sysctlbyname_orig = sysctlbyname;
 	litehook_rebind_symbol(LITEHOOK_REBIND_GLOBAL, (void *)sysctlbyname, (void *)sysctlbyname_hook, NULL);

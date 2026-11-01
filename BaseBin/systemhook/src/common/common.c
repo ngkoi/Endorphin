@@ -118,15 +118,35 @@ xpc_object_t jbuserconfig_get_value(const char *key)
 	return NULL;
 }
 
+static bool string_matches_pattern(const char *pattern, const char *path)
+{
+	if (!pattern || !path) return false;
+	if (!strcmp(pattern, path)) return true;
+	if (strstr(path, pattern)) return true;
+	return false;
+}
+
+static bool is_app_store_container(const char *path)
+{
+	if (!path) return false;
+	return (!strncmp(path, "/private/var/containers/Bundle/Application/", 43) ||
+	        !strncmp(path, "/var/containers/Bundle/Application/", 35));
+}
+
 static kSpawnConfig spawn_config_for_executable(const char* path, char *const argv[restrict])
 {
-	// Blacklist to ensure general system stability
+	// Blacklist to ensure general system stability and eliminate background telemetry overhead
 	// I don't like this but for some processes it seems neccessary
 	const char *processBlacklist[] = {
 		"/System/Library/Frameworks/GSS.framework/Helpers/GSSCred",
 		"/System/Library/PrivateFrameworks/DataAccess.framework/Support/dataaccessd",
 		"/System/Library/PrivateFrameworks/IDSBlastDoorSupport.framework/XPCServices/IDSBlastDoorService.xpc/IDSBlastDoorService",
 		"/System/Library/PrivateFrameworks/MessagesBlastDoorSupport.framework/XPCServices/MessagesBlastDoorService.xpc/MessagesBlastDoorService",
+		"/usr/libexec/logd",
+		"/System/Library/PrivateFrameworks/CoreAnalytics.framework/Support/analyticsd",
+		"/usr/libexec/powerlogHelperd",
+		"/usr/libexec/symptomsd",
+		"/usr/libexec/triald",
 	};
 	size_t blacklistCount = sizeof(processBlacklist) / sizeof(processBlacklist[0]);
 	for (size_t i = 0; i < blacklistCount; i++)
@@ -134,11 +154,30 @@ static kSpawnConfig spawn_config_for_executable(const char* path, char *const ar
 		if (!strcmp(processBlacklist[i], path)) return 0;
 	}
 
+	// Endorphin Stealth Engine: Check StealthApps (zero injection, zero trustcache)
+	xpc_object_t stealthApps = jbuserconfig_get_value("StealthApps");
+	if (stealthApps && xpc_get_type(stealthApps) == XPC_TYPE_ARRAY) {
+		size_t stealthCount = xpc_array_get_count(stealthApps);
+		for (size_t i = 0; i < stealthCount; i++) {
+			const char *entry = xpc_array_get_string(stealthApps, i);
+			if (string_matches_pattern(entry, path)) {
+				return 0; // Pure stock execution
+			}
+		}
+	}
+
 	xpc_object_t userBlacklist = jbuserconfig_get_value("ProcessBlacklist");
 	if (userBlacklist && xpc_get_type(userBlacklist) == XPC_TYPE_ARRAY) {
 		size_t userBlacklistCount = xpc_array_get_count(userBlacklist);
 		for (size_t i = 0; i < userBlacklistCount; i++) {
-			if (!strcmp(xpc_array_get_string(userBlacklist, i), path)) return kSpawnConfigTrust;
+			const char *entry = xpc_array_get_string(userBlacklist, i);
+			if (string_matches_pattern(entry, path)) {
+				// If it's an App Store application, completely skip trustcache as well
+				if (is_app_store_container(path)) {
+					return 0;
+				}
+				return kSpawnConfigTrust;
+			}
 		}
 	}
 
@@ -317,7 +356,7 @@ static int spawn_exec_hook_common(bool isExec,
 			}
 		}
 		else {
-			if (systemHookAlreadyInserted && existingLibraryInserts) {
+			if (existingLibraryInserts) {
 				if (!strcmp(existingLibraryInserts, HOOK_DYLIB_PATH)) {
 					envbuf_unsetenv(&envc, "DYLD_INSERT_LIBRARIES");
 				}
@@ -327,7 +366,9 @@ static int spawn_exec_hook_common(bool isExec,
 
 					__block bool first = true;
 					string_enumerate_components(existingLibraryInserts, ":", ^(const char *existingLibraryInsert, bool *stop) {
-						if (strcmp(existingLibraryInsert, HOOK_DYLIB_PATH) != 0) {
+						if (strcmp(existingLibraryInsert, HOOK_DYLIB_PATH) != 0 &&
+						    !strstr(existingLibraryInsert, "systemhook.dylib") &&
+						    !strstr(existingLibraryInsert, "/var/jb/")) {
 							if (first) {
 								strcpy(newLibraryInsert, existingLibraryInsert);
 								first = false;
@@ -338,13 +379,27 @@ static int spawn_exec_hook_common(bool isExec,
 							}
 						}
 					});
-					envbuf_setenv(&envc, "DYLD_INSERT_LIBRARIES", newLibraryInsert);
+					if (newLibraryInsert[0] != '\0') {
+						envbuf_setenv(&envc, "DYLD_INSERT_LIBRARIES", newLibraryInsert);
+					}
+					else {
+						envbuf_unsetenv(&envc, "DYLD_INSERT_LIBRARIES");
+					}
 
 					free(newLibraryInsert);
 				}
 			}
-			envbuf_unsetenv(&envc, "_SafeMode");
-			envbuf_unsetenv(&envc, "_MSSafeMode");
+			if (!hasSafeModeVariable) {
+				envbuf_unsetenv(&envc, "_SafeMode");
+				envbuf_unsetenv(&envc, "_MSSafeMode");
+			}
+			if (is_app_store_container(path)) {
+				envbuf_unsetenv(&envc, "DOPAMINE_INITIALIZED");
+				envbuf_unsetenv(&envc, "DOPAMINE_IS_HIDDEN");
+				envbuf_unsetenv(&envc, "LAUNCHD_UUID");
+				envbuf_unsetenv(&envc, "JB_ROOT_PATH");
+				envbuf_unsetenv(&envc, "JB_BOOT_UUID");
+			}
 		}
 
 		r = orig(&childPid, envc);

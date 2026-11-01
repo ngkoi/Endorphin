@@ -4,6 +4,8 @@
 #include <mach-o/dyld_images.h>
 #include <mach-o/getsect.h>
 #include <dlfcn.h>
+#include <pthread.h>
+#include <pthread/qos.h>
 #include <sys/stat.h>
 #include <paths.h>
 #include <util.h>
@@ -453,6 +455,10 @@ __attribute__((constructor)) static void initializer(void)
 		if (!strcmp(gExecutablePath, "/usr/sbin/cfprefsd") ||
 			!strcmp(gExecutablePath, "/System/Library/CoreServices/SpringBoard.app/SpringBoard") ||
 			!strcmp(gExecutablePath, "/usr/libexec/lsd")) {
+			if (!strcmp(gExecutablePath, "/System/Library/CoreServices/SpringBoard.app/SpringBoard")) {
+				// Boost SpringBoard UI thread QoS for silky smooth rendering and touch response
+				pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+			}
 			dlopen(JBROOT_PATH("/basebin/rootlesshooks.dylib"), RTLD_NOW);
 		}
 		else if (!strcmp(gExecutablePath, "/usr/libexec/watchdogd")) {
