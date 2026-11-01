@@ -33,12 +33,14 @@
     vc.view.layer.cornerCurve = kCACornerCurveContinuous;
     
     if (@available(iOS 19.0, *)) {
-        // Apple broke the method below by reimplementing some Preferences.framework classes in SwiftUI 🤮
+        // Apple broke the method below by reimplementing some Preferences.framework classes in SwiftUI
         // Now onTintColor is only implemented when the cell is initialized but gets reset to the stock color when the cell is reused
-        // I tried hard to fix it but failed in the end, so we will need to just use the stock tint color on iOS 26.0+
     }
     else {
-        [UISwitch appearanceWhenContainedInInstancesOfClasses:@[[vc class]]].onTintColor = [UIColor colorWithRed: 71.0/255.0 green: 169.0/255.0 blue: 135.0/255.0 alpha: 1.0];
+        UIColor *tintColor = [theme.key isEqualToString:@"aqua"] ?
+            [UIColor colorWithRed:32.0/255.0 green:135.0/255.0 blue:226.0/255.0 alpha:1.0] :
+            [UIColor colorWithRed:255.0/255.0 green:49.0/255.0 blue:49.0/255.0 alpha:1.0];
+        [UISwitch appearanceWhenContainedInInstancesOfClasses:@[[vc class]]].onTintColor = tintColor;
     }
 }
 

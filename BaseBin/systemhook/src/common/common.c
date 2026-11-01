@@ -126,6 +126,41 @@ static bool string_matches_pattern(const char *pattern, const char *path)
 	return false;
 }
 
+static const char *get_bundle_id_for_path(const char *path)
+{
+	if (!path) return NULL;
+	const char *appIdx = strstr(path, ".app");
+	if (!appIdx) return NULL;
+
+	static char cachedPath[PATH_MAX] = {0};
+	static char cachedBundleID[256] = {0};
+
+	size_t appLen = (appIdx - path) + 4; // includes ".app"
+	if (appLen + 12 >= PATH_MAX) return NULL;
+
+	char plistPath[PATH_MAX];
+	memcpy(plistPath, path, appLen);
+	strcpy(plistPath + appLen, "/Info.plist");
+
+	if (cachedPath[0] && !strcmp(cachedPath, plistPath)) {
+		return cachedBundleID[0] ? cachedBundleID : NULL;
+	}
+
+	strncpy(cachedPath, plistPath, PATH_MAX - 1);
+	cachedBundleID[0] = '\0';
+
+	xpc_object_t infoPlist = xpc_object_from_plist(plistPath);
+	if (infoPlist) {
+		const char *bid = xpc_dictionary_get_string(infoPlist, "CFBundleIdentifier");
+		if (bid) {
+			strncpy(cachedBundleID, bid, sizeof(cachedBundleID) - 1);
+		}
+		xpc_release(infoPlist);
+	}
+
+	return cachedBundleID[0] ? cachedBundleID : NULL;
+}
+
 static bool is_app_store_container(const char *path)
 {
 	if (!path) return false;
@@ -164,10 +199,14 @@ static kSpawnConfig spawn_config_for_executable(const char* path, char *const ar
 	if (stealthModeEnabled) {
 		xpc_object_t stealthApps = jbuserconfig_get_value("StealthApps");
 		if (stealthApps && xpc_get_type(stealthApps) == XPC_TYPE_ARRAY) {
+			const char *bundleID = get_bundle_id_for_path(path);
 			size_t stealthCount = xpc_array_get_count(stealthApps);
 			for (size_t i = 0; i < stealthCount; i++) {
 				const char *entry = xpc_array_get_string(stealthApps, i);
 				if (string_matches_pattern(entry, path)) {
+					return 0; // Pure stock execution
+				}
+				if (bundleID && entry && !strcmp(entry, bundleID)) {
 					return 0; // Pure stock execution
 				}
 			}

@@ -13,6 +13,7 @@
 #import "DOActionMenuButton.h"
 #import "DOUpdateViewController.h"
 #import "DOLogCrashViewController.h"
+#import "DOThemeManager.h"
 #import <pthread.h>
 #import <sys/sysctl.h>
 #import <libjailbreak/libjailbreak.h>
@@ -74,7 +75,10 @@
     }
 
     //Header
-    DOHeaderView *headerView = [[DOHeaderView alloc] initWithImage: [UIImage imageNamed:@"Dopamine"] subtitles: @[
+    DOTheme *theme = [[DOThemeManager sharedInstance] enabledTheme];
+    NSString *logoName = [theme.key isEqualToString:@"aqua"] ? @"Endorphin_Aqua" : @"Endorphin";
+    UIImage *logoImage = [UIImage imageNamed:logoName] ?: [UIImage imageNamed:@"Endorphin"];
+    DOHeaderView *headerView = [[DOHeaderView alloc] initWithImage:logoImage subtitles:@[
         [DOGlobalAppearance mainSubtitleString:[[DOEnvironmentManager sharedManager] versionSupportString]],
         [DOGlobalAppearance secondarySubtitleString:DOLocalizedString(@"Credits_Made_By")],
         [DOGlobalAppearance secondarySubtitleString:@"Enhanced by ngkhoi"],

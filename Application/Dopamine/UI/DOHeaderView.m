@@ -36,12 +36,15 @@
         //1 - Add the logo to our stack
         self.logoView = [[UIImageView alloc] init];
         self.logoView.translatesAutoresizingMaskIntoConstraints = NO;
-        self.logoView.image = [image imageWithAlignmentRectInsets:UIEdgeInsetsMake(7, 0, -7, 0)];
+        self.logoView.contentMode = UIViewContentModeScaleAspectFit;
+        self.logoView.image = image;
         [stackView addArrangedSubview:self.logoView];
 
+        CGFloat logoHeight = 28.0;
+        CGFloat aspect = (image.size.height > 0) ? (image.size.width / image.size.height) : 10.78;
         [NSLayoutConstraint activateConstraints:@[
-            [self.logoView.heightAnchor constraintEqualToConstant:40],
-            [self.logoView.widthAnchor constraintEqualToAnchor:self.logoView.heightAnchor multiplier:image.size.width / image.size.height],
+            [self.logoView.heightAnchor constraintEqualToConstant:logoHeight],
+            [self.logoView.widthAnchor constraintEqualToAnchor:self.logoView.heightAnchor multiplier:aspect],
         ]];
 
         //3 - Add our subtitles to our stack

@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
     PSSpecifier *_customBootlogoSpecifier;
 }
 
++ (void)syncEndorphinBaseBinConfig;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -647,13 +647,14 @@ void *boomerang_server(struct boomerang_info *info)
     }
 
     // Sync Endorphin preferences to BaseBin config.plist
-    NSString *configPath = JBROOT_PATH_NSSTRING(@"/basebin/config.plist");
+    NSString *configPath = JBROOT_PATH(@"/basebin/config.plist");
     NSMutableDictionary *configDict = [NSMutableDictionary dictionaryWithContentsOfFile:configPath] ?: [NSMutableDictionary new];
     DOPreferenceManager *pm = [DOPreferenceManager sharedManager];
     configDict[@"RespringLoopGuard"] = @([pm boolPreferenceValueForKey:@"respringLoopGuard" fallback:YES]);
     configDict[@"DeepSystemOptimizer"] = @([pm boolPreferenceValueForKey:@"deepSystemOptimizer" fallback:YES]);
     configDict[@"SchedulerBoost"] = @([pm boolPreferenceValueForKey:@"schedulerBoost" fallback:YES]);
     configDict[@"StealthMode"] = @([pm boolPreferenceValueForKey:@"stealthMode" fallback:YES]);
+    configDict[@"StealthApps"] = [pm preferenceValueForKey:@"stealthApps"] ?: @[];
     [configDict writeToFile:configPath atomically:YES];
     
     [[DOUIManager sharedInstance] sendLog:DOLocalizedString(@"Loading BaseBin TrustCache") debug:NO];

@@ -30,3 +30,5 @@ int execve_hook_shared(const char *path, char *const argv[], char *const envp[],
 volatile void *get_tpidrr0_el0(void);
 kern_return_t litehook_hook_memory_hookd(void *target, void *source, size_t sourceSize);
 kern_return_t mach_vm_protect_fixed(mach_port_name_t task, mach_vm_address_t address, mach_vm_size_t size, boolean_t set_maximum, vm_prot_t new_protection);
+
+xpc_object_t jbuserconfig_get_value(const char *key);

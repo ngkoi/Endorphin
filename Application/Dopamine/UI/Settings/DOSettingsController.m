@@ -20,6 +20,7 @@
 #import "DOSceneDelegate.h"
 #import "DOPSJetsamListItemsController.h"
 #import "DOButtonCell.h"
+#import "DOStealthAppListController.h"
 
 @interface DOSettingsController ()
 
@@ -292,6 +293,11 @@
             [stealthModeSpecifier setProperty:@"stealthMode" forKey:@"key"];
             [stealthModeSpecifier setProperty:@YES forKey:@"default"];
             [specifiers addObject:stealthModeSpecifier];
+
+            PSSpecifier *manageStealthSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Manage Stealth Apps" target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
+            [manageStealthSpecifier setProperty:@YES forKey:@"enabled"];
+            [manageStealthSpecifier setProperty:@"openStealthAppsList" forKey:@"action"];
+            [specifiers addObject:manageStealthSpecifier];
             
             if (!envManager.isJailbroken && !envManager.isInstalledThroughTrollStore) {
                 PSSpecifier *removeJailbreakSwitchSpecifier = [PSSpecifier preferenceSpecifierNamed:DOLocalizedString(@"Button_Remove_Jailbreak") target:self set:@selector(setRemoveJailbreakEnabled:specifier:) get:defGetter detail:nil cell:PSSwitchCell edit:nil];
@@ -425,12 +431,12 @@
 
 #pragma mark - Getters & Setters
 
-- (void)syncEndorphinBaseBinConfig
++ (void)syncEndorphinBaseBinConfig
 {
     if (![DOEnvironmentManager sharedManager].isJailbroken) return;
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSString *configPath = JBROOT_PATH_NSSTRING(@"/basebin/config.plist");
+        NSString *configPath = JBROOT_PATH(@"/basebin/config.plist");
         NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithContentsOfFile:configPath] ?: [NSMutableDictionary new];
 
         DOPreferenceManager *pm = [DOPreferenceManager sharedManager];
@@ -439,14 +445,23 @@
         dict[@"SchedulerBoost"] = @([pm boolPreferenceValueForKey:@"schedulerBoost" fallback:YES]);
         dict[@"StealthMode"] = @([pm boolPreferenceValueForKey:@"stealthMode" fallback:YES]);
 
+        NSArray *stealthApps = [pm preferenceValueForKey:@"stealthApps"];
+        dict[@"StealthApps"] = stealthApps ?: @[];
+
         [dict writeToFile:configPath atomically:YES];
     });
+}
+
+- (void)openStealthAppsList
+{
+    DOStealthAppListController *controller = [[DOStealthAppListController alloc] init];
+    [self.navigationController pushViewController:controller animated:YES];
 }
 
 - (void)setEndorphinPreferenceValue:(id)value specifier:(PSSpecifier *)specifier
 {
     [self setPreferenceValue:value specifier:specifier];
-    [self syncEndorphinBaseBinConfig];
+    [DOSettingsController syncEndorphinBaseBinConfig];
 }
 
 - (id)readEndorphinPreferenceValue:(PSSpecifier *)specifier

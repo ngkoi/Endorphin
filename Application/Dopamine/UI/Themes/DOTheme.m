@@ -40,6 +40,8 @@
 
 - (UIImage *)image
 {
+    if (self.imageName == nil || self.imageName.length == 0)
+        return nil;
     if (_image == nil)
         _image = [[UIImage imageNamed:self.imageName] imageWithBlur:self.blur];
     return _image;
@@ -48,19 +50,28 @@
 - (UIImage *)generateBootLogo
 {
     UIImage *backgroundImage = [self image];
-    CGSize canvasSize = backgroundImage.size;
+    CGSize canvasSize = backgroundImage ? backgroundImage.size : CGSizeMake(1170, 2532);
 
-    UIImage *overlayImage = [UIImage imageNamed:@"DopamineLogo"];
+    NSString *logoName = [self.key isEqualToString:@"aqua"] ? @"Endorphin_Aqua" : @"Endorphin";
+    UIImage *overlayImage = [UIImage imageNamed:logoName] ?: [UIImage imageNamed:@"DopamineLogo"];
 
     CGSize overlaySize = CGSizeMake(350, 350);
+    if (overlayImage && overlayImage.size.height > 0) {
+        CGFloat aspect = overlayImage.size.width / overlayImage.size.height;
+        overlaySize = CGSizeMake(320, 320 / aspect);
+    }
     CGPoint overlayOrigin = CGPointMake((canvasSize.width - overlaySize.width) / 2.0,
                                         (canvasSize.height - overlaySize.height) / 2.0);
 
-    UIGraphicsBeginImageContextWithOptions(canvasSize, NO, backgroundImage.scale);
+    UIGraphicsBeginImageContextWithOptions(canvasSize, NO, backgroundImage ? backgroundImage.scale : 3.0);
 
-    [backgroundImage drawInRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];
+    if (backgroundImage) {
+        [backgroundImage drawInRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];
+    } else {
+        [[UIColor blackColor] setFill];
+        UIRectFill(CGRectMake(0, 0, canvasSize.width, canvasSize.height));
+    }
 
-    // Render overlay (Dopamine Logo) in center of background for boot logo
     [overlayImage drawInRect:CGRectMake(overlayOrigin.x, overlayOrigin.y, overlaySize.width, overlaySize.height)];
 
     UIImage *finalImage = UIGraphicsGetImageFromCurrentImageContext();

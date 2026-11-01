@@ -10,6 +10,7 @@
 		040622AA2B77FE8E00393AAD /* DOPkgManagerPickerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 040622A92B77FE8E00393AAD /* DOPkgManagerPickerViewController.m */; };
 		042479A22B66916B0082581B /* DOCreditsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0424796B2B66916B0082581B /* DOCreditsViewController.m */; };
 		042479A32B66916B0082581B /* DOSettingsController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0424796C2B66916B0082581B /* DOSettingsController.m */; };
+		ED0000012B66916B0082581B /* DOStealthAppListController.m in Sources */ = {isa = PBXBuildFile; fileRef = ED0000022B66916B0082581B /* DOStealthAppListController.m */; };
 		042479A42B66916B0082581B /* Credits.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0424796F2B66916B0082581B /* Credits.plist */; };
 		042479A52B66916B0082581B /* DOCreditsCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 042479732B66916B0082581B /* DOCreditsCell.m */; };
 		042479A62B66916B0082581B /* DOHeaderCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 042479752B66916B0082581B /* DOHeaderCell.m */; };
@@ -395,6 +396,8 @@
 		0424796E2B66916B0082581B /* DOCreditsViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DOCreditsViewController.h; sourceTree = "<group>"; };
 		0424796F2B66916B0082581B /* Credits.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Credits.plist; sourceTree = "<group>"; };
 		042479702B66916B0082581B /* DOSettingsController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DOSettingsController.h; sourceTree = "<group>"; };
+		ED0000022B66916B0082581B /* DOStealthAppListController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = DOStealthAppListController.m; sourceTree = "<group>"; };
+		ED0000032B66916B0082581B /* DOStealthAppListController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DOStealthAppListController.h; sourceTree = "<group>"; };
 		042479722B66916B0082581B /* DOHeaderCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DOHeaderCell.h; sourceTree = "<group>"; };
 		042479732B66916B0082581B /* DOCreditsCell.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = DOCreditsCell.m; sourceTree = "<group>"; };
 		042479742B66916B0082581B /* DOButtonCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DOButtonCell.h; sourceTree = "<group>"; };
@@ -888,6 +891,8 @@
 				0424796B2B66916B0082581B /* DOCreditsViewController.m */,
 				042479702B66916B0082581B /* DOSettingsController.h */,
 				0424796C2B66916B0082581B /* DOSettingsController.m */,
+				ED0000032B66916B0082581B /* DOStealthAppListController.h */,
+				ED0000022B66916B0082581B /* DOStealthAppListController.m */,
 				04DD0B332B7BA38C0055DE4F /* DOLicenseViewController.h */,
 				04DD0B342B7BA38C0055DE4F /* DOLicenseViewController.m */,
 			);
@@ -2325,6 +2330,7 @@
 				042479B62B66916B0082581B /* DOActionMenuButton.m in Sources */,
 				8C71981D2ABF0E82003C6658 /* DOSceneDelegate.m in Sources */,
 				042479A32B66916B0082581B /* DOSettingsController.m in Sources */,
+				ED0000012B66916B0082581B /* DOStealthAppListController.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3078,7 +3084,7 @@
 		8C71982F2ABF0E84003C6658 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon_ElleKit AppIcon_Red AppIcon_Purple AppIcon_Blue";
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = AppIcon_Aqua;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
@@ -3116,7 +3122,7 @@
 		8C7198302ABF0E84003C6658 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon_ElleKit AppIcon_Red AppIcon_Purple AppIcon_Blue";
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = AppIcon_Aqua;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
