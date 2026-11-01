@@ -63,7 +63,8 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    [DOPSListController setupViewControllerStyle:self];
+    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    self.view.backgroundColor = [UIColor colorWithRed:24.0/255.0 green:24.0/255.0 blue:28.0/255.0 alpha:1.0];
 
     self.selectedItems = [NSMutableSet set];
     NSArray *saved = [[DOPreferenceManager sharedManager] preferenceValueForKey:@"stealthApps"];
@@ -71,16 +72,21 @@
         [self.selectedItems addObjectsFromArray:saved];
     }
 
-    self.headerView = [DOPSListItemsController makeHeader:@"Stealth Apps" withTarget:self];
+    self.headerView = [self buildHeaderView];
     self.headerView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.headerView];
+
+    DOTheme *theme = [[DOThemeManager sharedInstance] enabledTheme];
+    UIColor *accentColor = [theme.key isEqualToString:@"aqua"] ?
+        [UIColor colorWithRed:32.0/255.0 green:135.0/255.0 blue:226.0/255.0 alpha:1.0] :
+        [UIColor colorWithRed:255.0/255.0 green:49.0/255.0 blue:49.0/255.0 alpha:1.0];
 
     self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
     self.searchBar.delegate = self;
     self.searchBar.placeholder = @"Search applications";
     self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
     self.searchBar.barStyle = UIBarStyleBlack;
-    self.searchBar.tintColor = [UIColor whiteColor];
+    self.searchBar.tintColor = accentColor;
     if (@available(iOS 13.0, *)) {
         self.searchBar.searchTextField.textColor = [UIColor whiteColor];
     }
@@ -113,10 +119,10 @@
     [self.view addSubview:self.activityIndicator];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.headerView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.headerView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
         [self.headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.headerView.heightAnchor constraintEqualToConstant:70],
+        [self.headerView.heightAnchor constraintEqualToConstant:56],
 
         [self.searchBar.topAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
         [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8],
@@ -139,9 +145,70 @@
     [self loadInstalledApplications];
 }
 
+- (UIView *)buildHeaderView
+{
+    UIView *header = [[UIView alloc] initWithFrame:CGRectZero];
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.text = @"Stealth Apps";
+    titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.textAlignment = NSTextAlignmentLeft;
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:titleLabel];
+
+    UILabel *subtitleLabel = [[UILabel alloc] init];
+    subtitleLabel.text = @"Selected apps run without tweak injection";
+    subtitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+    subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.5];
+    subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:subtitleLabel];
+
+    UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [doneButton setTitle:@"Done" forState:UIControlStateNormal];
+    doneButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    DOTheme *theme = [[DOThemeManager sharedInstance] enabledTheme];
+    UIColor *accentColor = [theme.key isEqualToString:@"aqua"] ?
+        [UIColor colorWithRed:32.0/255.0 green:135.0/255.0 blue:226.0/255.0 alpha:1.0] :
+        [UIColor colorWithRed:255.0/255.0 green:49.0/255.0 blue:49.0/255.0 alpha:1.0];
+    doneButton.tintColor = accentColor;
+    [doneButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
+    doneButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:doneButton];
+
+    UIView *separator = [[UIView alloc] init];
+    separator.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.1];
+    separator.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:separator];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [titleLabel.topAnchor constraintEqualToAnchor:header.topAnchor constant:8],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+
+        [subtitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:2],
+        [subtitleLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+
+        [doneButton.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [doneButton.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
+
+        [separator.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
+        [separator.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
+        [separator.bottomAnchor constraintEqualToAnchor:header.bottomAnchor],
+        [separator.heightAnchor constraintEqualToConstant:0.5],
+    ]];
+
+    return header;
+}
+
 - (void)dismiss
 {
-    [self.navigationController popViewControllerAnimated:YES];
+    if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    } else if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
 }
 
 - (void)loadInstalledApplications

@@ -294,8 +294,17 @@
             [stealthModeSpecifier setProperty:@YES forKey:@"default"];
             [specifiers addObject:stealthModeSpecifier];
 
-            PSSpecifier *manageStealthSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Manage Stealth Apps" target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
-            [manageStealthSpecifier setProperty:@YES forKey:@"enabled"];
+            PSSpecifier *aftermarketScreenSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Alternative Userspace Reboot" target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [aftermarketScreenSpecifier setProperty:@YES forKey:@"enabled"];
+            [aftermarketScreenSpecifier setProperty:@"aftermarketScreenMode" forKey:@"key"];
+            [aftermarketScreenSpecifier setProperty:@NO forKey:@"default"];
+            [specifiers addObject:aftermarketScreenSpecifier];
+
+            PSSpecifier *manageStealthSpecifier = [PSSpecifier preferenceSpecifierNamed:@"" target:self set:defSetter get:defGetter detail:nil cell:PSStaticTextCell edit:nil];
+            [manageStealthSpecifier setProperty:@"Manage Stealth Apps" forKey:@"title"];
+            [manageStealthSpecifier setProperty:[DOButtonCell class] forKey:@"cellClass"];
+            [manageStealthSpecifier setProperty:buttonHeight forKey:@"height"];
+            [manageStealthSpecifier setProperty:@"shield.lefthalf.filled" forKey:@"image"];
             [manageStealthSpecifier setProperty:@"openStealthAppsList" forKey:@"action"];
             [specifiers addObject:manageStealthSpecifier];
             
@@ -444,6 +453,7 @@
         dict[@"DeepSystemOptimizer"] = @([pm boolPreferenceValueForKey:@"deepSystemOptimizer" fallback:YES]);
         dict[@"SchedulerBoost"] = @([pm boolPreferenceValueForKey:@"schedulerBoost" fallback:YES]);
         dict[@"StealthMode"] = @([pm boolPreferenceValueForKey:@"stealthMode" fallback:YES]);
+        dict[@"AftermarketScreenMode"] = @([pm boolPreferenceValueForKey:@"aftermarketScreenMode" fallback:NO]);
 
         NSArray *stealthApps = [pm preferenceValueForKey:@"stealthApps"];
         dict[@"StealthApps"] = stealthApps ?: @[];
@@ -454,17 +464,31 @@
 
 - (void)openStealthAppsList
 {
+    [self openStealthAppsList:nil];
+}
+
+- (void)openStealthAppsList:(id)sender
+{
     DOStealthAppListController *controller = [[DOStealthAppListController alloc] init];
-    [self.navigationController pushViewController:controller animated:YES];
+    controller.modalPresentationStyle = UIModalPresentationPageSheet;
+    if (@available(iOS 15.0, *)) {
+        UISheetPresentationController *sheet = controller.sheetPresentationController;
+        if (sheet) {
+            sheet.detents = @[[UISheetPresentationControllerDetent largeDetent]];
+            sheet.prefersGrabberVisible = YES;
+            sheet.prefersScrollingExpandsWhenScrolledToEdge = YES;
+        }
+    }
+    [self presentViewController:controller animated:YES completion:nil];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    PSSpecifier *specifier = [self specifierAtIndex:(int)indexPath.row];
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
     NSString *action = [specifier propertyForKey:@"action"];
     if (action && [action isEqualToString:@"openStealthAppsList"]) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
-        [self openStealthAppsList];
+        [self openStealthAppsList:specifier];
         return;
     }
     [super tableView:tableView didSelectRowAtIndexPath:indexPath];

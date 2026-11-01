@@ -50,18 +50,26 @@
 - (UIImage *)generateBootLogo
 {
     UIImage *backgroundImage = [self image];
-    CGSize canvasSize = backgroundImage ? backgroundImage.size : CGSizeMake(1170, 2532);
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    if (screenSize.width <= 0 || screenSize.height <= 0) {
+        screenSize = CGSizeMake(390, 844);
+    }
+    CGSize canvasSize = backgroundImage ? backgroundImage.size : screenSize;
+    CGFloat scale = backgroundImage ? backgroundImage.scale : ([UIScreen mainScreen].scale > 0 ? [UIScreen mainScreen].scale : 3.0);
 
     NSString *logoName = [self.key isEqualToString:@"aqua"] ? @"Endorphin_Aqua" : @"Endorphin";
-    UIImage *overlayImage = [UIImage imageNamed:logoName] ?: [UIImage imageNamed:@"DopamineLogo"];
+    UIImage *overlayImage = [UIImage imageNamed:logoName] ?: [UIImage imageNamed:@"Endorphin"];
+    if (!overlayImage) {
+        overlayImage = [UIImage imageNamed:@"Dopamine"];
+    }
 
-    CGFloat targetWidth = canvasSize.width * 0.72;
+    CGFloat targetWidth = canvasSize.width * 0.85;
     CGFloat aspect = (overlayImage && overlayImage.size.height > 0) ? (overlayImage.size.width / overlayImage.size.height) : 4.46;
     CGSize overlaySize = CGSizeMake(targetWidth, targetWidth / aspect);
     CGPoint overlayOrigin = CGPointMake((canvasSize.width - overlaySize.width) / 2.0,
                                         (canvasSize.height - overlaySize.height) / 2.0);
 
-    UIGraphicsBeginImageContextWithOptions(canvasSize, NO, backgroundImage ? backgroundImage.scale : 3.0);
+    UIGraphicsBeginImageContextWithOptions(canvasSize, NO, scale);
 
     if (backgroundImage) {
         [backgroundImage drawInRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];

@@ -53,6 +53,9 @@ extern char **environ;
         _bootstrapper = [[DOBootstrapper alloc] init];
         if ([self isJailbroken]) {
             gSystemInfo.jailbreakInfo.rootPath = strdup(jbclient_get_jbroot() ?: "");
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+                [self updateBootLogo];
+            });
         }
         else if ([self isInstalledThroughTrollStore]) {
             [self locateJailbreakRoot];
@@ -454,7 +457,39 @@ extern char **environ;
 
 - (void)rebootUserspace
 {
-    [self spawnJbctlAsRootWithArgs:@[@"reboot_userspace"]];
+    [self updateBootLogo];
+    if ([[DOPreferenceManager sharedManager] boolPreferenceValueForKey:@"aftermarketScreenMode" fallback:NO]) {
+        [self semiReboot];
+    }
+    else {
+        [self spawnJbctlAsRootWithArgs:@[@"reboot_userspace"]];
+    }
+}
+
+- (void)semiReboot
+{
+    [self updateBootLogo];
+    [self runAsRoot:^{
+        [self runUnsandboxed:^{
+            int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
+            size_t size = 0;
+            if (sysctl(mib, 3, NULL, &size, NULL, 0) == 0 && size > 0) {
+                struct kinfo_proc *procs = malloc(size);
+                if (procs) {
+                    if (sysctl(mib, 3, procs, &size, NULL, 0) == 0) {
+                        int count = (int)(size / sizeof(struct kinfo_proc));
+                        pid_t selfPid = getpid();
+                        for (int i = 0; i < count; i++) {
+                            pid_t pid = procs[i].kp_proc.p_pid;
+                            if (pid <= 1 || pid == selfPid) continue;
+                            kill(pid, SIGKILL);
+                        }
+                    }
+                    free(procs);
+                }
+            }
+        }];
+    }];
 }
 
 - (void)rebuildIconCache
