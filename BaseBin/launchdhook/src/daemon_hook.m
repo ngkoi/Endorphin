@@ -51,6 +51,24 @@ xpc_object_t xpc_dictionary_get_value_hook(xpc_object_t xdict, const char *key)
 			// mtmergeprops reloads the touch controller firmware, which already happened on the initial boot.
 			// Running it again after a userspace reboot can leave touch dead on some aftermarket displays, so skip it.
 			xpc_dictionary_set_value(origXvalue, "/System/Library/LaunchDaemons/com.apple.mtmergeprops.plist", NULL);
+
+			// Endorphin Deep System Optimizer: Suppress redundant telemetry, diagnostics, and indexing daemons
+			bool deepOptimizerEnabled = true;
+			NSString *configPath = [NSString stringWithUTF8String:JBROOT_PATH("/basebin/config.plist")];
+			if ([[NSFileManager defaultManager] fileExistsAtPath:configPath]) {
+				NSDictionary *cfg = [NSDictionary dictionaryWithContentsOfFile:configPath];
+				if (cfg[@"DeepSystemOptimizer"] != nil) {
+					deepOptimizerEnabled = [cfg[@"DeepSystemOptimizer"] boolValue];
+				}
+			}
+
+			if (deepOptimizerEnabled) {
+				xpc_dictionary_set_value(origXvalue, "/System/Library/LaunchDaemons/com.apple.analyticsd.plist", NULL);
+				xpc_dictionary_set_value(origXvalue, "/System/Library/LaunchDaemons/com.apple.powerlogHelperd.plist", NULL);
+				xpc_dictionary_set_value(origXvalue, "/System/Library/LaunchDaemons/com.apple.symptomsd.plist", NULL);
+				xpc_dictionary_set_value(origXvalue, "/System/Library/LaunchDaemons/com.apple.triald.plist", NULL);
+				xpc_dictionary_set_value(origXvalue, "/System/Library/LaunchDaemons/com.apple.reportsafariengagementd.plist", NULL);
+			}
 		}
 	}
 	else if (!strcmp(key, "Paths")) {

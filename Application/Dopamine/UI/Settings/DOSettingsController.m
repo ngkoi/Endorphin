@@ -264,6 +264,34 @@
             [jetsamSpecifier setProperty:@"jetsamOptionNumbers" forKey:@"valuesDataSource"];
             [jetsamSpecifier setProperty:@"jetsamOptionTitles" forKey:@"titlesDataSource"];
             [specifiers addObject:jetsamSpecifier];
+
+            PSSpecifier *endorphinGroupSpecifier = [PSSpecifier emptyGroupSpecifier];
+            endorphinGroupSpecifier.name = @"Endorphin Enhancements";
+            [specifiers addObject:endorphinGroupSpecifier];
+
+            PSSpecifier *respringGuardSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Respring Loop Guard" target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [respringGuardSpecifier setProperty:@YES forKey:@"enabled"];
+            [respringGuardSpecifier setProperty:@"respringLoopGuard" forKey:@"key"];
+            [respringGuardSpecifier setProperty:@YES forKey:@"default"];
+            [specifiers addObject:respringGuardSpecifier];
+
+            PSSpecifier *systemOptimizerSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Deep System Optimizer" target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [systemOptimizerSpecifier setProperty:@YES forKey:@"enabled"];
+            [systemOptimizerSpecifier setProperty:@"deepSystemOptimizer" forKey:@"key"];
+            [systemOptimizerSpecifier setProperty:@YES forKey:@"default"];
+            [specifiers addObject:systemOptimizerSpecifier];
+
+            PSSpecifier *schedulerBoostSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Performance Scheduler Boost" target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [schedulerBoostSpecifier setProperty:@YES forKey:@"enabled"];
+            [schedulerBoostSpecifier setProperty:@"schedulerBoost" forKey:@"key"];
+            [schedulerBoostSpecifier setProperty:@YES forKey:@"default"];
+            [specifiers addObject:schedulerBoostSpecifier];
+
+            PSSpecifier *stealthModeSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Stealth App Isolation" target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [stealthModeSpecifier setProperty:@YES forKey:@"enabled"];
+            [stealthModeSpecifier setProperty:@"stealthMode" forKey:@"key"];
+            [stealthModeSpecifier setProperty:@YES forKey:@"default"];
+            [specifiers addObject:stealthModeSpecifier];
             
             if (!envManager.isJailbroken && !envManager.isInstalledThroughTrollStore) {
                 PSSpecifier *removeJailbreakSwitchSpecifier = [PSSpecifier preferenceSpecifierNamed:DOLocalizedString(@"Button_Remove_Jailbreak") target:self set:@selector(setRemoveJailbreakEnabled:specifier:) get:defGetter detail:nil cell:PSSwitchCell edit:nil];
@@ -396,6 +424,35 @@
 }
 
 #pragma mark - Getters & Setters
+
+- (void)syncEndorphinBaseBinConfig
+{
+    if (![DOEnvironmentManager sharedManager].isJailbroken) return;
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSString *configPath = JBROOT_PATH_NSSTRING(@"/basebin/config.plist");
+        NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithContentsOfFile:configPath] ?: [NSMutableDictionary new];
+
+        DOPreferenceManager *pm = [DOPreferenceManager sharedManager];
+        dict[@"RespringLoopGuard"] = @([pm boolPreferenceValueForKey:@"respringLoopGuard" fallback:YES]);
+        dict[@"DeepSystemOptimizer"] = @([pm boolPreferenceValueForKey:@"deepSystemOptimizer" fallback:YES]);
+        dict[@"SchedulerBoost"] = @([pm boolPreferenceValueForKey:@"schedulerBoost" fallback:YES]);
+        dict[@"StealthMode"] = @([pm boolPreferenceValueForKey:@"stealthMode" fallback:YES]);
+
+        [dict writeToFile:configPath atomically:YES];
+    });
+}
+
+- (void)setEndorphinPreferenceValue:(id)value specifier:(PSSpecifier *)specifier
+{
+    [self setPreferenceValue:value specifier:specifier];
+    [self syncEndorphinBaseBinConfig];
+}
+
+- (id)readEndorphinPreferenceValue:(PSSpecifier *)specifier
+{
+    return [self readPreferenceValue:specifier];
+}
 
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier
 {

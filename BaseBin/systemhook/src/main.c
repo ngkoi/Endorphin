@@ -452,13 +452,25 @@ __attribute__((constructor)) static void initializer(void)
 
 	if (load_executable_path() == 0) {
 		// Load rootlesshooks / watchdoghook when neccessary
+		// Endorphin Performance Scheduler Boost:
+		// Elevate UI and touch threads for SpringBoard, backboardd, and interactive GUI apps
+		xpc_object_t schedBoostObj = jbuserconfig_get_value("SchedulerBoost");
+		bool schedBoost = true;
+		if (schedBoostObj && xpc_get_type(schedBoostObj) == XPC_TYPE_BOOL) {
+			schedBoost = xpc_bool_get_value(schedBoostObj);
+		}
+		if (schedBoost) {
+			if (!strcmp(gExecutablePath, "/System/Library/CoreServices/SpringBoard.app/SpringBoard") ||
+			    !strcmp(gExecutablePath, "/usr/libexec/backboardd") ||
+			    strstr(gExecutablePath, ".app/")) {
+				pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+			}
+		}
+
+		// Load rootlesshooks / watchdoghook when neccessary
 		if (!strcmp(gExecutablePath, "/usr/sbin/cfprefsd") ||
 			!strcmp(gExecutablePath, "/System/Library/CoreServices/SpringBoard.app/SpringBoard") ||
 			!strcmp(gExecutablePath, "/usr/libexec/lsd")) {
-			if (!strcmp(gExecutablePath, "/System/Library/CoreServices/SpringBoard.app/SpringBoard")) {
-				// Boost SpringBoard UI thread QoS for silky smooth rendering and touch response
-				pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-			}
 			dlopen(JBROOT_PATH("/basebin/rootlesshooks.dylib"), RTLD_NOW);
 		}
 		else if (!strcmp(gExecutablePath, "/usr/libexec/watchdogd")) {

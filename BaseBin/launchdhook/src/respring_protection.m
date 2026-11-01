@@ -102,6 +102,17 @@ bool respring_protection_should_safemode(const char *path, char *const argv[])
 {
 	if (!is_springboard_process(path, argv)) return false;
 
+	// Check if RespringLoopGuard toggle is enabled (default: true)
+	bool guardEnabled = true;
+	NSString *configPath = [NSString stringWithUTF8String:JBROOT_PATH("/basebin/config.plist")];
+	if ([[NSFileManager defaultManager] fileExistsAtPath:configPath]) {
+		NSDictionary *cfg = [NSDictionary dictionaryWithContentsOfFile:configPath];
+		if (cfg[@"RespringLoopGuard"] != nil) {
+			guardEnabled = [cfg[@"RespringLoopGuard"] boolValue];
+		}
+	}
+	if (!guardEnabled) return false;
+
 	time_t now = time(NULL);
 
 	// 1. Check for manual Safe Mode flag

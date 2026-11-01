@@ -155,13 +155,21 @@ static kSpawnConfig spawn_config_for_executable(const char* path, char *const ar
 	}
 
 	// Endorphin Stealth Engine: Check StealthApps (zero injection, zero trustcache)
-	xpc_object_t stealthApps = jbuserconfig_get_value("StealthApps");
-	if (stealthApps && xpc_get_type(stealthApps) == XPC_TYPE_ARRAY) {
-		size_t stealthCount = xpc_array_get_count(stealthApps);
-		for (size_t i = 0; i < stealthCount; i++) {
-			const char *entry = xpc_array_get_string(stealthApps, i);
-			if (string_matches_pattern(entry, path)) {
-				return 0; // Pure stock execution
+	xpc_object_t stealthModeObj = jbuserconfig_get_value("StealthMode");
+	bool stealthModeEnabled = true;
+	if (stealthModeObj && xpc_get_type(stealthModeObj) == XPC_TYPE_BOOL) {
+		stealthModeEnabled = xpc_bool_get_value(stealthModeObj);
+	}
+
+	if (stealthModeEnabled) {
+		xpc_object_t stealthApps = jbuserconfig_get_value("StealthApps");
+		if (stealthApps && xpc_get_type(stealthApps) == XPC_TYPE_ARRAY) {
+			size_t stealthCount = xpc_array_get_count(stealthApps);
+			for (size_t i = 0; i < stealthCount; i++) {
+				const char *entry = xpc_array_get_string(stealthApps, i);
+				if (string_matches_pattern(entry, path)) {
+					return 0; // Pure stock execution
+				}
 			}
 		}
 	}
