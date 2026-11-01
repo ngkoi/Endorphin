@@ -6,18 +6,16 @@ on:
       - '*'
     paths-ignore:
       - ".gitignore"
+      - "README.md"
+      - "LICENSE.md"
   pull_request:
     branches:
       - '*'
     paths-ignore:
       - ".gitignore"
+      - "README.md"
+      - "LICENSE.md"
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 1 1 *'
-    - cron: '0 0 1 4 *'
-    - cron: '0 0 30 6 *'
-    - cron: '0 0 28 9 *'
-    - cron: '0 0 27 12 *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,21 +31,29 @@ jobs:
           xcode-version: latest-stable
 
       - name: Checkout
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
         with:
-            submodules: recursive
+          submodules: recursive
 
       - name: Install Procursus
         uses: dhinakg/procursus-action@main
         with:
           packages: ldid findutils sed coreutils make
 
-      - name: Install better GNU Make
+      - name: Install GNU Make & libarchive
         run: |
-          brew install make
+          brew install make libarchive
           echo "PATH=$(brew --prefix make)/libexec/gnubin:$PATH" >> $GITHUB_ENV
 
+      - name: Cache THEOS and SDK
+        uses: actions/cache@v4
+        id: cache-theos
+        with:
+          path: theos
+          key: ${{ runner.os }}-theos-sdk16.5-v1
+
       - name: Install THEOS
+        if: steps.cache-theos.outputs.cache-hit != 'true'
         run: |
           set -x
           export BASEDIR="$(pwd)"
@@ -57,12 +63,18 @@ jobs:
           gsed -E "/^\s*get_theos\s*$/,+1 s/^(\s*)(get_sdks)\s*$/\1mkdir -p \${THEOS}\/sdks\n\1touch \${THEOS}\/sdks\/sdk\n\1\2/g" -i install-theos.sh
           bash install-theos.sh
           curl -L https://github.com/theos/sdks/releases/latest/download/iPhoneOS16.5.sdk.tar.xz --output $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz
-          gunzip $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz
-          tar -xf $THEOS/sdks/iPhoneOS16.5.sdk.tar -C $THEOS/sdks
-          rm $THEOS/sdks/iPhoneOS16.5.sdk.tar
-          cd $BASEDIR
+          tar -xf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
+          rm -f $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz
+
+      - name: Cache trustcache binary
+        uses: actions/cache@v4
+        id: cache-trustcache
+        with:
+          path: /opt/procursus/bin/trustcache
+          key: ${{ runner.os }}-trustcache-bin-v1
 
       - name: Build and Install trustcache
+        if: steps.cache-trustcache.outputs.cache-hit != 'true'
         run: |
           set -x
           git clone https://github.com/CRKatri/trustcache
@@ -71,6 +83,22 @@ jobs:
           export LDFLAGS="$LDFLAGS -L$(brew --prefix openssl)/lib -arch arm64"
           gmake -j$(sysctl -n hw.logicalcpu) OPENSSL=1
           sudo cp trustcache /opt/procursus/bin/
+
+      - name: Cache Bootstraps
+        uses: actions/cache@v4
+        id: cache-bootstraps
+        with:
+          path: |
+            Application/Dopamine/Resources/bootstrap_1800.tar.zst
+            Application/Dopamine/Resources/bootstrap_1900.tar.zst
+          key: ${{ runner.os }}-bootstraps-v1
+
+      - name: Download Bootstraps
+        if: steps.cache-bootstraps.outputs.cache-hit != 'true'
+        run: |
+          set -x
+          cd Application/Dopamine/Resources
+          ./download_bootstraps.sh
 
       - name: Set Environment Variables
         run: |
@@ -82,27 +110,50 @@ jobs:
           echo "ctimestamp=${TS}" >> $GITHUB_ENV
           echo "shorthash=${SHASH}" >> $GITHUB_ENV
 
-      - name: Install libarchive
-        run: |
-          brew install libarchive
+      - name: Cache BaseBin
+        uses: actions/cache@v4
+        id: cache-basebin
+        with:
+          path: |
+            BaseBin/basebin.tar
+            BaseBin/.build
+            BaseBin/.include
+            BaseBin/dopamine/dopamine
+          key: ${{ runner.os }}-basebin-${{ hashFiles('BaseBin/**') }}
 
-      - name: Download Bootstraps
-        run: |
-            set -x
-            cd Application/Dopamine/Resources
-            ./download_bootstraps.sh
+      - name: Cache Xcode DerivedData & SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            Application/build
+          key: ${{ runner.os }}-xcode-${{ hashFiles('Application/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-
 
       - name: Build
         run: |
           set -x
           export BASEDIR="$(pwd)"
           export THEOS="${BASEDIR}/theos"
-          gmake -j$(sysctl -n hw.logicalcpu) NIGHTLY=1
+          if [ "${{ steps.cache-basebin.outputs.cache-hit }}" != "true" ]; then
+            echo "--- Compiling BaseBin ---"
+            gmake -C BaseBin -j$(sysctl -n hw.logicalcpu)
+          else
+            echo "--- BaseBin restored from cache! Skipping BaseBin build ---"
+          fi
+          echo "--- Compiling Packages ---"
+          gmake -C Packages -j$(sysctl -n hw.logicalcpu)
+          echo "--- Compiling Application ---"
+          gmake -C Application -j$(sysctl -n hw.logicalcpu) NIGHTLY=1
+          echo "--- Compiling Standalone ---"
+          gmake -C Standalone -j$(sysctl -n hw.logicalcpu)
 
       - name: Upload Artifact
         id: dopamine-latest-upload
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         with:
-          name: Dopamine
+          name: Endorphin
           path: |
             ${{ github.workspace }}/Application/Dopamine.ipa
+            ${{ github.workspace }}/Application/Dopamine.tipa
