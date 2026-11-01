@@ -484,7 +484,8 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    int index = [self indexForIndexPath:indexPath];
+    PSSpecifier *specifier = (index >= 0) ? [self specifierAtIndex:index] : nil;
     NSString *action = [specifier propertyForKey:@"action"];
     if (action && [action isEqualToString:@"openStealthAppsList"]) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
