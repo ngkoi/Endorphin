@@ -458,6 +458,18 @@
     [self.navigationController pushViewController:controller animated:YES];
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    PSSpecifier *specifier = [self specifierAtIndex:(int)indexPath.row];
+    NSString *action = [specifier propertyForKey:@"action"];
+    if (action && [action isEqualToString:@"openStealthAppsList"]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self openStealthAppsList];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
+
 - (void)setEndorphinPreferenceValue:(id)value specifier:(PSSpecifier *)specifier
 {
     [self setPreferenceValue:value specifier:specifier];
