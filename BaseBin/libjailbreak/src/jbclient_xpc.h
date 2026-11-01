@@ -44,5 +44,6 @@ int jbclient_boomerang_done(void);
 bool jbclient_dopamine_is_jailbroken(char **version);
 int jbclient_dopamine_get_root(void);
 int jbclient_dopamine_drop_root(void);
+int jbclient_systemwide_set_stealth_mode(bool enabled);
 
 #endif

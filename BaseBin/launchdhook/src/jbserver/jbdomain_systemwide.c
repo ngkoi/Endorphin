@@ -533,6 +533,18 @@ static int systemwide_persona_fix(audit_token_t *callerToken, int childPid, uid_
 	return 0;
 }
 
+static int systemwide_set_stealth_mode(audit_token_t *callerToken, bool enabled)
+{
+	if (enabled) {
+		unlink("/var/jb");
+	} else {
+		if (access("/var/jb", F_OK) != 0 && gSystemInfo.jailbreakInfo.rootPath) {
+			symlink(gSystemInfo.jailbreakInfo.rootPath, "/var/jb");
+		}
+	}
+	return 0;
+}
+
 struct jbserver_domain gSystemwideDomain = {
 	.permissionHandler = systemwide_domain_allowed,
 	.actions = {
@@ -609,6 +621,15 @@ struct jbserver_domain gSystemwideDomain = {
 				{ .name = "child-pid", .type = JBS_TYPE_UINT64, .out = false },
 				{ .name = "overwrite-uid", .type = JBS_TYPE_UINT64, .out = false },
 				{ .name = "overwrite-gid", .type = JBS_TYPE_UINT64, .out = false },
+			},
+		},
+		// JBS_SYSTEMWIDE_SET_STEALTH_MODE
+		{
+			.handler = systemwide_set_stealth_mode,
+			.args = (jbserver_arg[]) {
+				{ .name = "caller-token", .type = JBS_TYPE_CALLER_TOKEN, .out = false },
+				{ .name = "enabled", .type = JBS_TYPE_BOOL, .out = false },
+				{ 0 },
 			},
 		},
 		{ 0 },

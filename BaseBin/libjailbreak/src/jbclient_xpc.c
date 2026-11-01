@@ -537,3 +537,17 @@ int jbclient_dopamine_drop_root(void)
 	}
 	return -1;
 }
+
+int jbclient_systemwide_set_stealth_mode(bool enabled)
+{
+	xpc_object_t message = xpc_dictionary_create_empty();
+	xpc_dictionary_set_bool(message, "enabled", enabled);
+	xpc_object_t xreply = jbserver_xpc_send(JBS_DOMAIN_SYSTEMWIDE, JBS_SYSTEMWIDE_SET_STEALTH_MODE, message);
+	xpc_release(message);
+	if (xreply) {
+		int64_t result = xpc_dictionary_get_int64(xreply, "result");
+		xpc_release(xreply);
+		return (int)result;
+	}
+	return -1;
+}

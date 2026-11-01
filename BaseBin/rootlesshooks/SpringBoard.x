@@ -3,6 +3,7 @@
 #import <objc/objc.h>
 #import <libroot.h>
 #import <fcntl.h>
+#import <libjailbreak/jbclient_xpc.h>
 
 bool string_has_prefix(const char *str, const char* prefix)
 {
@@ -38,6 +39,71 @@ bool string_has_prefix(const char *str, const char* prefix)
 
 %end
 
+static BOOL is_stealth_bundle_id(NSString *bundleID)
+{
+	if (!bundleID || bundleID.length == 0) return NO;
+
+	static NSDictionary *config = nil;
+	static NSTimeInterval lastCheck = 0;
+	NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+	if (now - lastCheck > 2.0 || !config) {
+		lastCheck = now;
+		config = [NSDictionary dictionaryWithContentsOfFile:JBROOT_PATH_NSSTRING(@"/basebin/config.plist")];
+	}
+
+	NSNumber *stealthMode = config[@"StealthMode"];
+	if (stealthMode && ![stealthMode boolValue]) return NO;
+
+	NSArray *stealthApps = config[@"StealthApps"];
+	if (!stealthApps) return NO;
+
+	return [stealthApps containsObject:bundleID];
+}
+
+static BOOL gStealthVarJbHidden = NO;
+
+static void set_stealth_var_jb_hidden(BOOL hidden)
+{
+	if (gStealthVarJbHidden != hidden) {
+		gStealthVarJbHidden = hidden;
+		jbclient_systemwide_set_stealth_mode(hidden);
+	}
+}
+
+@interface SBApplication : NSObject
+@property (nonatomic, readonly) NSString *bundleIdentifier;
+@end
+
+%hook SBApplication
+
+- (void)willActivate
+{
+	%orig;
+	if (is_stealth_bundle_id(self.bundleIdentifier)) {
+		set_stealth_var_jb_hidden(YES);
+	}
+}
+
+- (void)didActivate
+{
+	%orig;
+	if (is_stealth_bundle_id(self.bundleIdentifier)) {
+		set_stealth_var_jb_hidden(YES);
+	} else if (gStealthVarJbHidden) {
+		set_stealth_var_jb_hidden(NO);
+	}
+}
+
+- (void)didDeactivate
+{
+	%orig;
+	if (gStealthVarJbHidden && is_stealth_bundle_id(self.bundleIdentifier)) {
+		set_stealth_var_jb_hidden(NO);
+	}
+}
+
+%end
+
 %hookf(int, fcntl, int fildes, int cmd, ...) {
 	if (cmd == F_SETPROTECTIONCLASS) {
 		char filePath[PATH_MAX];
@@ -67,5 +133,6 @@ bool string_has_prefix(const char *str, const char* prefix)
 
 void springboardInit(void)
 {
+	jbclient_systemwide_set_stealth_mode(false);
 	%init();
 }
