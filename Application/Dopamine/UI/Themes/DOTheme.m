@@ -55,11 +55,9 @@
     NSString *logoName = [self.key isEqualToString:@"aqua"] ? @"Endorphin_Aqua" : @"Endorphin";
     UIImage *overlayImage = [UIImage imageNamed:logoName] ?: [UIImage imageNamed:@"DopamineLogo"];
 
-    CGSize overlaySize = CGSizeMake(350, 350);
-    if (overlayImage && overlayImage.size.height > 0) {
-        CGFloat aspect = overlayImage.size.width / overlayImage.size.height;
-        overlaySize = CGSizeMake(320, 320 / aspect);
-    }
+    CGFloat targetWidth = canvasSize.width * 0.72;
+    CGFloat aspect = (overlayImage && overlayImage.size.height > 0) ? (overlayImage.size.width / overlayImage.size.height) : 4.46;
+    CGSize overlaySize = CGSizeMake(targetWidth, targetWidth / aspect);
     CGPoint overlayOrigin = CGPointMake((canvasSize.width - overlaySize.width) / 2.0,
                                         (canvasSize.height - overlaySize.height) / 2.0);
 

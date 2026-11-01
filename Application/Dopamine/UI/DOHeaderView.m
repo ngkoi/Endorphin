@@ -40,8 +40,8 @@
         self.logoView.image = image;
         [stackView addArrangedSubview:self.logoView];
 
-        CGFloat logoHeight = 28.0;
-        CGFloat aspect = (image.size.height > 0) ? (image.size.width / image.size.height) : 10.78;
+        CGFloat logoHeight = 48.0;
+        CGFloat aspect = (image.size.height > 0) ? (image.size.width / image.size.height) : 4.46;
         [NSLayoutConstraint activateConstraints:@[
             [self.logoView.heightAnchor constraintEqualToConstant:logoHeight],
             [self.logoView.widthAnchor constraintEqualToAnchor:self.logoView.heightAnchor multiplier:aspect],
