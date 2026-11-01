@@ -7,8 +7,8 @@
 #import <sys/stat.h>
 
 #define RESPRING_LOOP_THRESHOLD 3
-#define RESPRING_LOOP_WINDOW_SEC 30
-#define UNLOCK_PROBATION_WINDOW_SEC 30
+#define RESPRING_LOOP_WINDOW_SEC 60
+#define UNLOCK_PROBATION_WINDOW_SEC 45
 #define UNLOCK_CRASH_THRESHOLD 2
 #define STABILITY_TIMEOUT_SEC 60
 
@@ -75,6 +75,29 @@ static void reset_protection_state(void)
 	log_guard(@"SpringBoard reached stability (>60s). Loop protection counters reset.");
 }
 
+static void show_safemode_alert(void)
+{
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		// Wait 4 seconds for SpringBoard and notification servers to be fully ready
+		sleep(4);
+
+		const char *uialertPath = JBROOT_PATH("/usr/bin/uialert");
+		if (access(uialertPath, X_OK) == 0) {
+			const char *body = "Respring loop detected! Tweaks have been temporarily disabled to protect your device.\n\nPlease open Sileo/Zebra to remove faulty tweaks, or tap Restart to exit Safe Mode.";
+			log_guard(@"Displaying Safe Mode UI Alert to user...");
+			int ret = exec_cmd(uialertPath, "-b", body, "-p", "OK", "-s", "Restart SpringBoard", "⚠️ Endorphin Safe Mode", NULL);
+			if (ret == 1) { // User clicked "Restart SpringBoard"
+				log_guard(@"User tapped Restart SpringBoard from Safe Mode alert. Resetting and triggering sbreload...");
+				reset_protection_state();
+				const char *sbreload = JBROOT_PATH("/usr/bin/sbreload");
+				if (access(sbreload, X_OK) == 0) {
+					exec_cmd(sbreload, NULL);
+				}
+			}
+		}
+	});
+}
+
 bool respring_protection_should_safemode(const char *path, char *const argv[])
 {
 	if (!is_springboard_process(path, argv)) return false;
@@ -137,6 +160,7 @@ void respring_protection_did_spawn_springboard(void)
 				fclose(f);
 			}
 		}
+		show_safemode_alert();
 	}
 
 	// Schedule stability reset timer after 60 seconds
