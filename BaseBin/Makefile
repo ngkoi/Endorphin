@@ -7,6 +7,8 @@
 #choma:
 #	$(MAKE) -C ChOma TARGET=ios DISABLE_SIGNING=1 DYLIB_LDFLAGS="-install_name @loader_path/libchoma.dylib" $@
 
+export BUILD_STANDALONE ?= 0
+
 all: basebin.tar
 
 subprojects: ChOma XPF MachOMerger opainject libjailbreak systemhook forkfix launchdhook hookd boomerang jbctl idownloadd watchdoghook rootlesshooks dopamine

@@ -27,6 +27,7 @@
 
 @interface LSApplicationWorkspace : NSObject
 + (LSApplicationWorkspace *)defaultWorkspace;
+- (void)enumerateApplicationsOfType:(NSUInteger)type block:(void (^)(LSApplicationProxy *proxy))block;
 - (NSArray *)allInstalledApplications;
 - (NSArray *)allApplications;
 @end
@@ -71,6 +72,7 @@
     }
 
     self.headerView = [DOPSListItemsController makeHeader:@"Stealth Apps" withTarget:self];
+    self.headerView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.headerView];
 
     self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
@@ -82,6 +84,7 @@
     if (@available(iOS 13.0, *)) {
         self.searchBar.searchTextField.textColor = [UIColor whiteColor];
     }
+    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.searchBar];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -91,6 +94,7 @@
     self.tableView.separatorColor = [UIColor colorWithWhite:1.0 alpha:0.1];
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     self.tableView.rowHeight = 60.0;
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.tableView];
 
     self.emptyLabel = [[UILabel alloc] initWithFrame:CGRectZero];
@@ -99,38 +103,40 @@
     self.emptyLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
     self.emptyLabel.textAlignment = NSTextAlignmentCenter;
     self.emptyLabel.hidden = YES;
+    self.emptyLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.emptyLabel];
 
     self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     self.activityIndicator.color = [UIColor whiteColor];
     self.activityIndicator.hidesWhenStopped = YES;
+    self.activityIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.activityIndicator];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.headerView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.headerView.heightAnchor constraintEqualToConstant:70],
+
+        [self.searchBar.topAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
+        [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8],
+        [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-8],
+        [self.searchBar.heightAnchor constraintEqualToConstant:44],
+
+        [self.tableView.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:4],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+
+        [self.emptyLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.emptyLabel.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+
+        [self.activityIndicator.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.activityIndicator.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+    ]];
 
     [self.activityIndicator startAnimating];
     [self loadInstalledApplications];
-}
-
-- (void)viewWillAppear:(BOOL)animated
-{
-    [super viewWillAppear:animated];
-    if (self.navigationController && [self.navigationController respondsToSelector:@selector(_frameForViewController:)]) {
-        self.view.frame = [self.navigationController _frameForViewController:self];
-    }
-}
-
-- (void)viewDidLayoutSubviews
-{
-    [super viewDidLayoutSubviews];
-
-    CGFloat width = self.view.bounds.size.width;
-    CGFloat height = self.view.bounds.size.height;
-    if (width <= 0 || height <= 0) return;
-
-    self.headerView.frame = CGRectMake(0, 0, width, 65);
-    self.searchBar.frame = CGRectMake(8, 65, width - 16, 44);
-    self.tableView.frame = CGRectMake(0, 114, width, height - 114);
-    self.emptyLabel.frame = CGRectMake(20, (height - 30) / 2.0, width - 40, 30);
-    self.activityIndicator.center = CGPointMake(width / 2.0, height / 2.0);
 }
 
 - (void)dismiss
@@ -150,34 +156,52 @@
         Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
         if (workspaceClass) {
             id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
-            NSArray *installed = nil;
-            if ([workspace respondsToSelector:@selector(allInstalledApplications)]) {
-                installed = [workspace performSelector:@selector(allInstalledApplications)];
-            } else if ([workspace respondsToSelector:@selector(allApplications)]) {
-                installed = [workspace performSelector:@selector(allApplications)];
-            }
+            if (workspace) {
+                void (^processProxy)(id) = ^(id proxy) {
+                    if (!proxy) return;
+                    if ([proxy respondsToSelector:@selector(isPlaceholder)] && [proxy isPlaceholder]) return;
+                    if ([proxy respondsToSelector:@selector(isLaunchProhibited)] && [proxy isLaunchProhibited]) return;
 
-            for (id proxy in installed) {
-                if ([proxy respondsToSelector:@selector(isPlaceholder)] && [proxy isPlaceholder]) continue;
-                if ([proxy respondsToSelector:@selector(isLaunchProhibited)] && [proxy isLaunchProhibited]) continue;
+                    NSString *appType = [proxy respondsToSelector:@selector(applicationType)] ? [proxy applicationType] : nil;
+                    if (appType && [appType isEqualToString:@"PluginKit"]) return;
 
-                NSString *appType = [proxy respondsToSelector:@selector(applicationType)] ? [proxy applicationType] : nil;
-                if (appType && [appType isEqualToString:@"PluginKit"]) continue;
+                    NSString *bid = [proxy respondsToSelector:@selector(bundleIdentifier)] ? [proxy bundleIdentifier] : nil;
+                    NSString *name = [proxy respondsToSelector:@selector(localizedName)] ? [proxy localizedName] : nil;
+                    NSURL *bundleURL = [proxy respondsToSelector:@selector(bundleURL)] ? [proxy bundleURL] : nil;
 
-                NSString *bid = [proxy respondsToSelector:@selector(bundleIdentifier)] ? [proxy bundleIdentifier] : nil;
-                NSString *name = [proxy respondsToSelector:@selector(localizedName)] ? [proxy localizedName] : nil;
-                NSURL *bundleURL = [proxy respondsToSelector:@selector(bundleURL)] ? [proxy bundleURL] : nil;
+                    if (!bid || bid.length == 0) return;
+                    if (!name || name.length == 0) name = bid;
 
-                if (!bid || bid.length == 0) continue;
-                if (!name || name.length == 0) name = bid;
+                    DOAppItem *item = [[DOAppItem alloc] init];
+                    item.bundleID = bid;
+                    item.name = name;
+                    item.bundleURL = bundleURL;
+                    item.appFolderName = bundleURL ? bundleURL.lastPathComponent : nil;
 
-                DOAppItem *item = [[DOAppItem alloc] init];
-                item.bundleID = bid;
-                item.name = name;
-                item.bundleURL = bundleURL;
-                item.appFolderName = bundleURL ? bundleURL.lastPathComponent : nil;
+                    appsDict[bid] = item;
+                };
 
-                appsDict[bid] = item;
+                // In iOS 14, 15, 16: enumerateApplicationsOfType:block: is the true SPI
+                // Type 0 = User Applications (App Store, Sideloaded, TrollStore)
+                // Type 1 = System Applications
+                if ([workspace respondsToSelector:@selector(enumerateApplicationsOfType:block:)]) {
+                    [workspace enumerateApplicationsOfType:0 block:processProxy];
+                    [workspace enumerateApplicationsOfType:1 block:processProxy];
+                }
+
+                // Fallbacks if enumerateApplicationsOfType:block: did not populate
+                if (appsDict.count == 0 && [workspace respondsToSelector:@selector(allInstalledApplications)]) {
+                    NSArray *installed = [workspace performSelector:@selector(allInstalledApplications)];
+                    for (id proxy in installed) {
+                        processProxy(proxy);
+                    }
+                }
+                if (appsDict.count == 0 && [workspace respondsToSelector:@selector(allApplications)]) {
+                    NSArray *allApps = [workspace performSelector:@selector(allApplications)];
+                    for (id proxy in allApps) {
+                        processProxy(proxy);
+                    }
+                }
             }
         }
 
