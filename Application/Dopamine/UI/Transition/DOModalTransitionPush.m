@@ -7,6 +7,10 @@
 
 #import "DOModalTransitionPush.h"
 
+@interface UINavigationController (Private)
+- (CGRect)_frameForViewController:(id)viewController;
+@end
+
 @interface DOModalTransitionPush ()
 
 @property (nonatomic, assign) BOOL forwards;
@@ -32,6 +36,16 @@
     UIViewController *toViewController = [transitionContext viewControllerForKey:UITransitionContextToViewControllerKey];
     UIViewController *fromViewController = [transitionContext viewControllerForKey:UITransitionContextFromViewControllerKey];
     
+    CGRect finalFrame = [transitionContext finalFrameForViewController:toViewController];
+    if (CGRectIsEmpty(finalFrame)) {
+        if ([fromViewController.navigationController respondsToSelector:@selector(_frameForViewController:)]) {
+            finalFrame = [fromViewController.navigationController _frameForViewController:toViewController];
+        } else {
+            finalFrame = fromViewController.view.frame;
+        }
+    }
+    toViewController.view.frame = finalFrame;
+
     int screen_width = fromViewController.navigationController.view.bounds.size.width;
 
     [[transitionContext containerView] addSubview:toViewController.view];

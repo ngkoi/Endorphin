@@ -13,6 +13,7 @@
 #import "DOEnvironmentManager.h"
 #import "DOThemeManager.h"
 #import <objc/runtime.h>
+#import <dlfcn.h>
 
 @interface LSApplicationProxy : NSObject
 @property (nonatomic, readonly) NSString *applicationType;
@@ -21,14 +22,24 @@
 @property (nonatomic, readonly) NSURL *bundleURL;
 @property (nonatomic, readonly) BOOL isPlaceholder;
 @property (nonatomic, readonly) BOOL isLaunchProhibited;
-- (NSData *)iconDataForVariant:(int)variant;
 + (LSApplicationProxy *)applicationProxyForIdentifier:(NSString *)identifier;
+@end
+
+@interface LSApplicationWorkspace : NSObject
++ (LSApplicationWorkspace *)defaultWorkspace;
+- (NSArray *)allInstalledApplications;
+- (NSArray *)allApplications;
+@end
+
+@interface UINavigationController (Private)
+- (CGRect)_frameForViewController:(id)viewController;
 @end
 
 @interface DOAppItem : NSObject
 @property (nonatomic, copy) NSString *name;
 @property (nonatomic, copy) NSString *bundleID;
-@property (nonatomic, copy) NSString *appFolderName;
+@property (nonatomic, copy, nullable) NSString *appFolderName;
+@property (nonatomic, strong, nullable) NSURL *bundleURL;
 @property (nonatomic, strong, nullable) UIImage *icon;
 @end
 
@@ -36,9 +47,11 @@
 @end
 
 @interface DOStealthAppListController ()
-@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UIView *headerView;
 @property (nonatomic, strong) UISearchBar *searchBar;
+@property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIActivityIndicatorView *activityIndicator;
+@property (nonatomic, strong) UILabel *emptyLabel;
 @property (nonatomic, strong) NSArray<DOAppItem *> *allApps;
 @property (nonatomic, strong) NSArray<DOAppItem *> *filteredApps;
 @property (nonatomic, strong) NSMutableSet<NSString *> *selectedItems;
@@ -57,16 +70,18 @@
         [self.selectedItems addObjectsFromArray:saved];
     }
 
-    UIView *header = [DOPSListItemsController makeHeader:@"Stealth Apps" withTarget:self];
-    header.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:header];
+    self.headerView = [DOPSListItemsController makeHeader:@"Stealth Apps" withTarget:self];
+    [self.view addSubview:self.headerView];
 
-    self.searchBar = [[UISearchBar alloc] init];
+    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
     self.searchBar.delegate = self;
     self.searchBar.placeholder = @"Search applications";
     self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
     self.searchBar.barStyle = UIBarStyleBlack;
-    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.searchBar.tintColor = [UIColor whiteColor];
+    if (@available(iOS 13.0, *)) {
+        self.searchBar.searchTextField.textColor = [UIColor whiteColor];
+    }
     [self.view addSubview:self.searchBar];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -74,38 +89,48 @@
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorColor = [UIColor colorWithWhite:1.0 alpha:0.1];
-    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     self.tableView.rowHeight = 60.0;
     [self.view addSubview:self.tableView];
+
+    self.emptyLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.emptyLabel.text = @"No applications found";
+    self.emptyLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.4];
+    self.emptyLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    self.emptyLabel.textAlignment = NSTextAlignmentCenter;
+    self.emptyLabel.hidden = YES;
+    [self.view addSubview:self.emptyLabel];
 
     self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     self.activityIndicator.color = [UIColor whiteColor];
     self.activityIndicator.hidesWhenStopped = YES;
-    self.activityIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.activityIndicator];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [header.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:5],
-        [header.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [header.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [header.heightAnchor constraintEqualToConstant:70],
-
-        [self.searchBar.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:5],
-        [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
-        [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-12],
-        [self.searchBar.heightAnchor constraintEqualToConstant:44],
-
-        [self.tableView.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:10],
-        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
-        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-12],
-        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-10],
-
-        [self.activityIndicator.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.activityIndicator.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-    ]];
 
     [self.activityIndicator startAnimating];
     [self loadInstalledApplications];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    if (self.navigationController && [self.navigationController respondsToSelector:@selector(_frameForViewController:)]) {
+        self.view.frame = [self.navigationController _frameForViewController:self];
+    }
+}
+
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+
+    CGFloat width = self.view.bounds.size.width;
+    CGFloat height = self.view.bounds.size.height;
+    if (width <= 0 || height <= 0) return;
+
+    self.headerView.frame = CGRectMake(0, 0, width, 65);
+    self.searchBar.frame = CGRectMake(8, 65, width - 16, 44);
+    self.tableView.frame = CGRectMake(0, 114, width, height - 114);
+    self.emptyLabel.frame = CGRectMake(20, (height - 30) / 2.0, width - 40, 30);
+    self.activityIndicator.center = CGPointMake(width / 2.0, height / 2.0);
 }
 
 - (void)dismiss
@@ -116,7 +141,11 @@
 - (void)loadInstalledApplications
 {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSMutableArray<DOAppItem *> *appsList = [NSMutableArray array];
+        NSMutableDictionary<NSString *, DOAppItem *> *appsDict = [NSMutableDictionary dictionary];
+
+        // 1. Try LaunchServices
+        dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
+        dlopen("/System/Library/PrivateFrameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
 
         Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
         if (workspaceClass) {
@@ -133,7 +162,6 @@
                 if ([proxy respondsToSelector:@selector(isLaunchProhibited)] && [proxy isLaunchProhibited]) continue;
 
                 NSString *appType = [proxy respondsToSelector:@selector(applicationType)] ? [proxy applicationType] : nil;
-                // Exclude system daemons; focus on User and System apps that can be launched
                 if (appType && [appType isEqualToString:@"PluginKit"]) continue;
 
                 NSString *bid = [proxy respondsToSelector:@selector(bundleIdentifier)] ? [proxy bundleIdentifier] : nil;
@@ -146,68 +174,170 @@
                 DOAppItem *item = [[DOAppItem alloc] init];
                 item.bundleID = bid;
                 item.name = name;
+                item.bundleURL = bundleURL;
                 item.appFolderName = bundleURL ? bundleURL.lastPathComponent : nil;
 
-                UIImage *iconImage = nil;
-                @try {
-                    Class lsProxyClass = NSClassFromString(@"LSApplicationProxy");
-                    if (lsProxyClass) {
-                        id p = [lsProxyClass performSelector:@selector(applicationProxyForIdentifier:) withObject:bid];
-                        if (p && [p respondsToSelector:@selector(iconDataForVariant:)]) {
-                            for (int v = 2; v <= 5; v++) {
-                                id data = [p performSelector:@selector(iconDataForVariant:) withObject:@(v)];
-                                if (data && [data isKindOfClass:[NSData class]]) {
-                                    iconImage = [UIImage imageWithData:data scale:[UIScreen mainScreen].scale];
-                                    if (iconImage) break;
+                appsDict[bid] = item;
+            }
+        }
+
+        // 2. Scan /private/var/containers/Bundle/Application (User Apps: VNeID, Banking, etc.)
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSString *userAppsDir = @"/private/var/containers/Bundle/Application";
+        NSArray *uuids = [fm contentsOfDirectoryAtPath:userAppsDir error:nil];
+        for (NSString *uuid in uuids) {
+            NSString *bundleFolder = [userAppsDir stringByAppendingPathComponent:uuid];
+            NSArray *subItems = [fm contentsOfDirectoryAtPath:bundleFolder error:nil];
+            for (NSString *subItem in subItems) {
+                if ([subItem.pathExtension isEqualToString:@"app"]) {
+                    NSString *appPath = [bundleFolder stringByAppendingPathComponent:subItem];
+                    NSString *infoPlistPath = [appPath stringByAppendingPathComponent:@"Info.plist"];
+                    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
+                    if (info) {
+                        NSString *bid = info[@"CFBundleIdentifier"];
+                        if (bid && bid.length > 0) {
+                            DOAppItem *existing = appsDict[bid];
+                            if (!existing) {
+                                DOAppItem *item = [[DOAppItem alloc] init];
+                                item.bundleID = bid;
+                                NSString *displayName = info[@"CFBundleDisplayName"] ?: info[@"CFBundleName"];
+                                item.name = (displayName && displayName.length > 0) ? displayName : [subItem stringByDeletingPathExtension];
+                                item.bundleURL = [NSURL fileURLWithPath:appPath];
+                                item.appFolderName = subItem;
+                                appsDict[bid] = item;
+                            } else {
+                                if (!existing.bundleURL) {
+                                    existing.bundleURL = [NSURL fileURLWithPath:appPath];
+                                }
+                                if (!existing.appFolderName) {
+                                    existing.appFolderName = subItem;
                                 }
                             }
                         }
                     }
-                } @catch (NSException *e) {}
-
-                if (!iconImage) {
-                    SEL iconSel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
-                    if ([UIImage respondsToSelector:iconSel]) {
-                        typedef UIImage *(*IconFunc)(id, SEL, NSString *, int, CGFloat);
-                        IconFunc func = (IconFunc)[UIImage methodForSelector:iconSel];
-                        iconImage = func([UIImage class], iconSel, bid, 0, [UIScreen mainScreen].scale);
-                    }
                 }
-
-                item.icon = iconImage;
-                [appsList addObject:item];
             }
         }
 
-        [appsList sortUsingComparator:^NSComparisonResult(DOAppItem *a, DOAppItem *b) {
+        // 3. Scan System Apps: /Applications and /System/Applications
+        NSArray *sysDirs = @[@"/Applications", @"/System/Applications"];
+        for (NSString *sysDir in sysDirs) {
+            NSArray *apps = [fm contentsOfDirectoryAtPath:sysDir error:nil];
+            for (NSString *appFolder in apps) {
+                if ([appFolder.pathExtension isEqualToString:@"app"]) {
+                    NSString *appPath = [sysDir stringByAppendingPathComponent:appFolder];
+                    NSString *infoPlistPath = [appPath stringByAppendingPathComponent:@"Info.plist"];
+                    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
+                    if (info) {
+                        NSString *bid = info[@"CFBundleIdentifier"];
+                        if (bid && bid.length > 0 && !appsDict[bid]) {
+                            DOAppItem *item = [[DOAppItem alloc] init];
+                            item.bundleID = bid;
+                            NSString *displayName = info[@"CFBundleDisplayName"] ?: info[@"CFBundleName"];
+                            item.name = (displayName && displayName.length > 0) ? displayName : [appFolder stringByDeletingPathExtension];
+                            item.bundleURL = [NSURL fileURLWithPath:appPath];
+                            item.appFolderName = appFolder;
+                            appsDict[bid] = item;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Sort alphabetically
+        NSArray<DOAppItem *> *sortedApps = [[appsDict allValues] sortedArrayUsingComparator:^NSComparisonResult(DOAppItem *a, DOAppItem *b) {
             return [a.name localizedCaseInsensitiveCompare:b.name];
         }];
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.activityIndicator stopAnimating];
-            self.allApps = appsList;
-            self.filteredApps = appsList;
+            self.allApps = sortedApps;
+            self.filteredApps = sortedApps;
+            self.emptyLabel.hidden = (sortedApps.count > 0);
             [self.tableView reloadData];
         });
     });
+}
+
+- (UIImage *)iconForItem:(DOAppItem *)item
+{
+    UIImage *iconImage = nil;
+
+    // 1. Try UIImage private API
+    SEL iconSel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
+    if ([UIImage respondsToSelector:iconSel]) {
+        typedef UIImage *(*IconFunc)(id, SEL, NSString *, int, CGFloat);
+        IconFunc func = (IconFunc)[UIImage methodForSelector:iconSel];
+        iconImage = func([UIImage class], iconSel, item.bundleID, 0, [UIScreen mainScreen].scale);
+        if (iconImage) return iconImage;
+    }
+
+    // 2. Try LSApplicationProxy
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    if (proxyClass) {
+        id proxy = [proxyClass performSelector:@selector(applicationProxyForIdentifier:) withObject:item.bundleID];
+        SEL iconDataSel = NSSelectorFromString(@"iconDataForVariant:");
+        if (proxy && [proxy respondsToSelector:iconDataSel]) {
+            typedef NSData *(*IconDataFunc)(id, SEL, int);
+            IconDataFunc func = (IconDataFunc)[proxy methodForSelector:iconDataSel];
+            NSData *data = func(proxy, iconDataSel, 2);
+            if (data && [data isKindOfClass:[NSData class]]) {
+                iconImage = [UIImage imageWithData:data scale:[UIScreen mainScreen].scale];
+                if (iconImage) return iconImage;
+            }
+        }
+    }
+
+    // 3. Try reading icon file from bundleURL if available
+    if (item.bundleURL) {
+        NSString *bundlePath = item.bundleURL.path;
+        NSString *infoPlist = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
+        NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:infoPlist];
+        NSArray *iconFiles = dict[@"CFBundleIcons"][@"CFBundlePrimaryIcon"][@"CFBundleIconFiles"];
+        if (iconFiles && iconFiles.count > 0) {
+            NSString *iconName = [iconFiles lastObject];
+            NSArray *candidates = @[
+                [iconName stringByAppendingString:@"@3x.png"],
+                [iconName stringByAppendingString:@"@2x.png"],
+                [iconName stringByAppendingString:@".png"],
+                iconName
+            ];
+            for (NSString *candidate in candidates) {
+                NSString *full = [bundlePath stringByAppendingPathComponent:candidate];
+                if ([[NSFileManager defaultManager] fileExistsAtPath:full]) {
+                    iconImage = [UIImage imageWithContentsOfFile:full];
+                    if (iconImage) return iconImage;
+                }
+            }
+        }
+    }
+
+    return nil;
 }
 
 #pragma mark - Search Bar Delegate
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText
 {
-    if (searchText.length == 0) {
+    NSString *trimmed = [searchText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) {
         self.filteredApps = self.allApps;
     } else {
-        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@ OR bundleID CONTAINS[cd] %@", searchText, searchText];
+        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@ OR bundleID CONTAINS[cd] %@", trimmed, trimmed];
         self.filteredApps = [self.allApps filteredArrayUsingPredicate:predicate];
     }
+    self.emptyLabel.hidden = (self.filteredApps.count > 0);
     [self.tableView reloadData];
 }
 
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar
 {
     [searchBar resignFirstResponder];
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
+{
+    [self.searchBar resignFirstResponder];
 }
 
 #pragma mark - Table View Data Source & Delegate
@@ -224,7 +354,12 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellID];
         cell.backgroundColor = [UIColor clearColor];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+
+        UIView *selectedBg = [[UIView alloc] init];
+        selectedBg.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        cell.selectedBackgroundView = selectedBg;
+
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
         cell.detailTextLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.5];
@@ -251,21 +386,45 @@
     } else {
         cell.imageView.image = [UIImage systemImageNamed:@"app.fill"];
         cell.imageView.tintColor = [UIColor colorWithWhite:1.0 alpha:0.4];
+
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+            UIImage *iconImage = [self iconForItem:item];
+            if (iconImage) {
+                item.icon = iconImage;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    UITableViewCell *curCell = [tableView cellForRowAtIndexPath:indexPath];
+                    if (curCell) {
+                        curCell.imageView.image = iconImage;
+                        [curCell setNeedsLayout];
+                    }
+                });
+            }
+        });
     }
 
     UISwitch *toggle = (UISwitch *)cell.accessoryView;
-    toggle.tag = indexPath.row;
+    objc_setAssociatedObject(toggle, "appItem", item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     toggle.on = [self.selectedItems containsObject:item.bundleID];
 
     return cell;
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+    if (cell && [cell.accessoryView isKindOfClass:[UISwitch class]]) {
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        [toggle setOn:!toggle.isOn animated:YES];
+        [self appSwitchToggled:toggle];
+    }
+}
+
 - (void)appSwitchToggled:(UISwitch *)sender
 {
-    NSInteger row = sender.tag;
-    if (row < 0 || row >= self.filteredApps.count) return;
+    DOAppItem *item = objc_getAssociatedObject(sender, "appItem");
+    if (!item || !item.bundleID) return;
 
-    DOAppItem *item = self.filteredApps[row];
     if (sender.isOn) {
         [self.selectedItems addObject:item.bundleID];
         if (item.appFolderName && item.appFolderName.length > 0) {

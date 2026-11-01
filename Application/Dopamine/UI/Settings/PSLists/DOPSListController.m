@@ -31,6 +31,8 @@
     vc.view.layer.cornerRadius = 16;
     vc.view.layer.masksToBounds = YES;
     vc.view.layer.cornerCurve = kCACornerCurveContinuous;
+    vc.view.layer.borderWidth = 1.0;
+    vc.view.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
     
     if (@available(iOS 19.0, *)) {
         // Apple broke the method below by reimplementing some Preferences.framework classes in SwiftUI
