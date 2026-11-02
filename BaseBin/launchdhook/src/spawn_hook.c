@@ -6,6 +6,7 @@
 #include "update.h"
 #include "respring_protection.h"
 #include <libjailbreak/util.h>
+#include <libjailbreak/bootlog.h>
 #include <substrate.h>
 #include <mach-o/dyld.h>
 #include <sys/param.h>
@@ -97,7 +98,9 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 #endif
 
 			// Before the userspace reboot, we want to stash the primitives into boomerang
+			bootlog_info("Stashing primitives into boomerang...");
 			boomerang_stashPrimitives();
+			bootlog_success("Primitives stashed");
 
 			// Fix Xcode debugging being broken after the userspace reboot
 			if (__builtin_available(iOS 17.0, *)) {
@@ -110,12 +113,16 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 			// If there is a pending jailbreak update, apply it now
 			const char *stagedJailbreakUpdate = getenv("STAGED_JAILBREAK_UPDATE");
 			if (stagedJailbreakUpdate) {
+				bootlog_info("Applying staged jailbreak update: %s", stagedJailbreakUpdate);
 				int r = jbupdate_basebin(stagedJailbreakUpdate);
 				if (r != 0) {
 					char msg[1000];
 					snprintf(msg, 1000, "Failed updating basebin (error %d).", r);
+					bootlog_error("%s", msg);
+					sleep(5);
 					abort_with_reason(7, 1, msg, 0);
 				}
+				bootlog_success("Basebin updated successfully");
 				unsetenv("STAGED_JAILBREAK_UPDATE");
 			}
 
@@ -183,6 +190,7 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 			if (argv[0]) {
 				if (argv[1]) {
 					if (!strcmp(argv[1], "com.apple.backboardd")) {
+						bootlog_info("Starting backboardd, releasing boot console...");
 						free_boot_logo();
 						gFreeBootLogoBeforeBackboardd = false;
 					}
@@ -196,7 +204,9 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 	bool freeEnvp = false;
 
 	if (isSB) {
+		bootlog_info("Spawning SpringBoard...");
 		if (respring_protection_should_safemode(path, argv)) {
+			bootlog_warn("Respring protection: enabling safe mode");
 			customEnvp = envbuf_mutcopy((const char **)envp);
 			envbuf_setenv(&customEnvp, "_SafeMode", "1");
 			envbuf_setenv(&customEnvp, "_MSSafeMode", "1");
@@ -207,6 +217,7 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 	int ret = posix_spawn_hook_shared(pid, path, desc, argv, customEnvp, __posix_spawn_orig_wrapper, systemwide_trust_file_by_path, platform_set_process_debugged, jbsetting(jetsamMultiplier));
 
 	if (isSB && ret == 0) {
+		bootlog_success("SpringBoard spawned successfully");
 		respring_protection_did_spawn_springboard();
 	}
 

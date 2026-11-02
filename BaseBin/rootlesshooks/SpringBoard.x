@@ -71,12 +71,7 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 	}
 }
 
-@interface SBApplication : NSObject
-@property (nonatomic, readonly) NSString *bundleIdentifier;
-@end
-
 @interface SpringBoard : UIApplication
-- (SBApplication *)_accessibilityFrontMostApplication;
 @end
 
 %hook SpringBoard
@@ -84,41 +79,19 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 - (void)frontDisplayDidChange:(id)currentDisplay
 {
 	%orig;
-	NSString *bundleID = nil;
-	if (currentDisplay && [currentDisplay respondsToSelector:@selector(bundleIdentifier)]) {
-		bundleID = [currentDisplay bundleIdentifier];
-	}
-	if (!bundleID) {
-		SBApplication *front = [(SpringBoard *)[UIApplication sharedApplication] _accessibilityFrontMostApplication];
-		if (front && [front respondsToSelector:@selector(bundleIdentifier)]) {
-			bundleID = [front bundleIdentifier];
+	@try {
+		NSString *bundleID = nil;
+		if (currentDisplay && [currentDisplay respondsToSelector:@selector(bundleIdentifier)]) {
+			bundleID = [currentDisplay bundleIdentifier];
+		}
+
+		if (bundleID && is_stealth_bundle_id(bundleID)) {
+			set_stealth_var_jb_hidden(YES);
+		} else {
+			set_stealth_var_jb_hidden(NO);
 		}
 	}
-
-	if (bundleID && is_stealth_bundle_id(bundleID)) {
-		set_stealth_var_jb_hidden(YES);
-	} else {
-		set_stealth_var_jb_hidden(NO);
-	}
-}
-
-%end
-
-%hook SBApplication
-
-- (void)_didBecomeActive
-{
-	%orig;
-	if (is_stealth_bundle_id(self.bundleIdentifier)) {
-		set_stealth_var_jb_hidden(YES);
-	}
-}
-
-- (void)_didSuspend
-{
-	%orig;
-	if (is_stealth_bundle_id(self.bundleIdentifier)) {
-		set_stealth_var_jb_hidden(NO);
+	@catch (NSException *e) {
 	}
 }
 
@@ -153,6 +126,5 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 
 void springboardInit(void)
 {
-	jbclient_systemwide_set_stealth_mode(false);
 	%init();
 }

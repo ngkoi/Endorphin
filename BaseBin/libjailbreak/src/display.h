@@ -30,6 +30,7 @@ CGImageRef load_image_from_bitmap_plist(const char *bitmapPlistPath);
 CGSize find_display_size(void);
 struct drawctx *drawctx_init(void);
 void drawctx_free(struct drawctx *ctx);
+int drawctx_update(struct drawctx *ctx);
 int drawctx_draw_raw_path(struct drawctx *ctx, const char *path);
 int drawctx_draw_raw(struct drawctx *ctx, void *rawBuf, size_t rawBufSize);
 int drawctx_draw_image_path(struct drawctx *ctx, const char *image_path);

@@ -4,6 +4,7 @@
 #include <libjailbreak/kcall_arm64.h>
 #include <libjailbreak/signatures.h>
 #include <libjailbreak/basebin_gen.h>
+#include <libjailbreak/bootlog.h>
 #include <xpc/xpc.h>
 #include <dlfcn.h>
 
@@ -15,14 +16,21 @@ int jbupdate_basebin(const char *basebinTarPath)
 {
 	@autoreleasepool {
 		int r = 0;
-		if (access(basebinTarPath, F_OK) != 0) return 1;
+		if (access(basebinTarPath, F_OK) != 0) {
+			bootlog_error("jbupdate: tarball not accessible: %s", basebinTarPath);
+			return 1;
+		}
 
 		NSString *prevVersion = [NSString stringWithContentsOfFile:JBROOT_PATH(@"/basebin/.version") encoding:NSUTF8StringEncoding error:nil] ?: @"2.0";
+		bootlog_info("jbupdate: starting update from version %s", prevVersion.UTF8String);
 
 		// Extract basebin tar
-		NSString *tmpExtractionPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+		NSString *tmpDir = NSTemporaryDirectory() ?: @"/var/tmp";
+		NSString *tmpExtractionPath = [tmpDir stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+		bootlog_info("jbupdate: extracting basebin tar...");
 		r = libarchive_unarchive(basebinTarPath, tmpExtractionPath.fileSystemRepresentation);
 		if (r != 0) {
+			bootlog_error("jbupdate: libarchive_unarchive failed with error %d", r);
 			[[NSFileManager defaultManager] removeItemAtPath:tmpExtractionPath error:nil];
 			return 2;
 		}
@@ -30,20 +38,28 @@ int jbupdate_basebin(const char *basebinTarPath)
 
 		// Update basebin trustcache
 		NSString *trustcachePath = [tmpBasebinPath stringByAppendingPathComponent:@"basebin.tc"];
-		if (![[NSFileManager defaultManager] fileExistsAtPath:trustcachePath]) return 3;
+		if (![[NSFileManager defaultManager] fileExistsAtPath:trustcachePath]) {
+			bootlog_error("jbupdate: basebin.tc not found");
+			[[NSFileManager defaultManager] removeItemAtPath:tmpExtractionPath error:nil];
+			return 3;
+		}
 		trustcache_file_v1 *basebinTcFile = NULL;
 		if (trustcache_file_build_from_path(trustcachePath.fileSystemRepresentation, &basebinTcFile) != 0) {
+			bootlog_error("jbupdate: failed to parse basebin.tc");
 			[[NSFileManager defaultManager] removeItemAtPath:tmpExtractionPath error:nil];
 			return 4;
 		}
+		bootlog_info("jbupdate: uploading basebin trustcache...");
 		r = trustcache_file_upload_with_uuid(basebinTcFile, BASEBIN_TRUSTCACHE_UUID);
 		free(basebinTcFile);
 		if (r != 0) {
+			bootlog_error("jbupdate: trustcache upload failed with error %d", r);
 			[[NSFileManager defaultManager] removeItemAtPath:tmpExtractionPath error:nil];
 			return 5;
 		}
 
 		// Replace basebin content
+		bootlog_info("jbupdate: replacing basebin binaries...");
 		NSArray *newBasebinContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:tmpBasebinPath error:nil];
 		for (NSString *basebinItem in newBasebinContents) {
 			NSString *newBasebinPath = [tmpBasebinPath stringByAppendingPathComponent:basebinItem];
@@ -77,8 +93,12 @@ int jbupdate_basebin(const char *basebinTarPath)
 		}
 
 		NSString *newVersion = [NSString stringWithContentsOfFile:JBROOT_PATH(@"/basebin/.version") encoding:NSUTF8StringEncoding error:nil];
-		if (!newVersion) return 6;
+		if (!newVersion) {
+			bootlog_error("jbupdate: failed to read new .version");
+			return 6;
+		}
 
+		bootlog_success("jbupdate: basebin files updated to %s", newVersion.UTF8String);
 		setenv("JBUPDATE_PREV_VERSION", prevVersion.UTF8String, 1);
 		setenv("JBUPDATE_NEW_VERSION", newVersion.UTF8String, 1);
 		return 0;
@@ -88,11 +108,13 @@ int jbupdate_basebin(const char *basebinTarPath)
 void jbupdate_update_system_info(void)
 {
 	@autoreleasepool {
+		bootlog_info("XPF: loading patchfinder...");
 		// Load XPF
 		void *xpfHandle = dlopen("@loader_path/libxpf.dylib", RTLD_NOW);
 		if (!xpfHandle) {
 			char msg[4000];
 			snprintf(msg, 4000, "Dopamine: dlopening libxpf failed: (%s), cannot continue.", dlerror());
+			bootlog_error("%s", msg);
 			abort_with_reason(7, 1, msg, 0);
 			return;
 		}
@@ -111,6 +133,7 @@ void jbupdate_update_system_info(void)
 		if (access(txmPath, F_OK) != 0) txmPath = NULL;
 
 		// Rerun patchfinder
+		bootlog_info("XPF: parsing kernelcache for system offsets...");
 		int r = xpf_start_with_kernel_path(kernelPath, sptmPath, txmPath);
 		const char *error = NULL;
 		if (r == 0) {

@@ -3,6 +3,7 @@
 #import <libjailbreak/util.h>
 #import <libjailbreak/kernel.h>
 #import <libjailbreak/display.h>
+#import <libjailbreak/bootlog.h>
 #import <mach-o/dyld.h>
 #import <os/alloc_once_private.h>
 #import <dlfcn.h>
@@ -54,17 +55,13 @@ void draw_boot_logo(const char *bootLogoPath)
 {
 	exec_with_asl_disabled(^{
 		if (!gBootLogoDrawCtx) {
-			gBootLogoDrawCtx = drawctx_init();
+			bootlog_init(NULL, bootLogoPath);
+			gBootLogoDrawCtx = bootlog_get_drawctx();
 		}
 
 		if (bootLogoPath) {
 			if (!access(bootLogoPath, R_OK)) {
-				// When launchd tears down the userspace, it will do so in no particular order
-				// If SpringBoard gets unloaded before backboardd, backboardd will draw a spinning wheel to the framebuffer
-				// If this happens after we wrote the boot logo to the framebuffer, it will be replaced by that
-				// Therefore, we kill backboardd early so that this race does not happen
 				killall("/usr/libexec/backboardd", SIGTERM);
-				drawctx_draw_image_path(gBootLogoDrawCtx, bootLogoPath);
 			}
 		}
 	});
@@ -72,7 +69,7 @@ void draw_boot_logo(const char *bootLogoPath)
 
 void free_boot_logo(void)
 {
-	drawctx_free(gBootLogoDrawCtx);
+	bootlog_free();
 	gBootLogoDrawCtx = NULL;
 }
 
@@ -82,6 +79,7 @@ int sysctlbyname_hook(const char *name, void *oldp, size_t *oldlenp, void *newp,
 	int r = sysctlbyname_orig(name, oldp, oldlenp, newp, newlen);
 	if (!strcmp(name, "kern.willuserspacereboot")) {
 		draw_boot_logo(JBROOT_PATH("/basebin/bootlogo.jp2"));
+		bootlog_info("Userspace reboot requested by kern.willuserspacereboot");
 	}
 	return r;
 }
@@ -104,6 +102,7 @@ __attribute__((constructor)) static void initializer(void)
 	const char *jbupdatePrevVersion = getenv("JBUPDATE_PREV_VERSION");
 	const char *jbupdateNewVersion = getenv("JBUPDATE_NEW_VERSION");
 	if (jbupdatePrevVersion && jbupdateNewVersion) {
+		bootlog_info("Applying jbupdate stage 1 (%s -> %s)", jbupdatePrevVersion, jbupdateNewVersion);
 		jbupdate_finalize_stage1(jbupdatePrevVersion, jbupdateNewVersion);
 	}
 
@@ -124,6 +123,7 @@ __attribute__((constructor)) static void initializer(void)
 		}
 
 		draw_boot_logo(JBROOT_PATH("/basebin/bootlogo.jp2"));
+		bootlog_info("Dopamine early boot (userspace reboot)");
 		gFreeBootLogoBeforeBackboardd = YES;
 	}
 	else {
@@ -133,16 +133,22 @@ __attribute__((constructor)) static void initializer(void)
 		firstLoad = true;
 	}
 
+	bootlog_info("Recovering kernel primitives from boomerang...");
 	int err = boomerang_recoverPrimitives(firstLoad, true);
 	if (err != 0) {
 		char msg[1000];
 		snprintf(msg, 1000, "Dopamine: Failed to recover primitives (error %d), cannot continue.", err);
+		bootlog_error("%s", msg);
+		sleep(5);
 		abort_with_reason(7, 1, msg, 0);
 		return;
 	}
+	bootlog_success("Kernel primitives recovered successfully");
 
 	if (jbupdatePrevVersion && jbupdateNewVersion) {
+		bootlog_info("Applying jbupdate stage 2 (XPF patchfinder)...");
 		jbupdate_finalize_stage2(jbupdatePrevVersion, jbupdateNewVersion);
+		bootlog_success("Jailbreak update finalized");
 		unsetenv("JBUPDATE_PREV_VERSION");
 		unsetenv("JBUPDATE_NEW_VERSION");
 	}
