@@ -106,6 +106,11 @@
                 [[DOEnvironmentManager sharedManager] rebootUserspace];
             }];
         }],
+        [UIAction actionWithTitle:DOLocalizedString(@"Button_Update_Environment") image:[UIImage systemImageNamed:@"arrow.triangle.2.circlepath.circle" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"update-env" handler:^(__kindof UIAction * _Nonnull action) {
+            [self fadeToBlack:^{
+                [[DOEnvironmentManager sharedManager] updateEnvironment];
+            }];
+        }],
         [UIAction actionWithTitle:DOLocalizedString(@"Menu_Credits_Title") image:[UIImage systemImageNamed:@"info.circle" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"credits" handler:^(__kindof UIAction * _Nonnull action) {
             [self.navigationController pushViewController:[[DOCreditsViewController alloc] init] animated:YES];
         }]
@@ -390,7 +395,7 @@
 
 - (BOOL)actionMenuActionIsEnabled:(UIAction *)action
 {
-    if ([action.identifier isEqualToString:@"respring"] || [action.identifier isEqualToString:@"reboot-userspace"]) {
+    if ([action.identifier isEqualToString:@"respring"] || [action.identifier isEqualToString:@"reboot-userspace"] || [action.identifier isEqualToString:@"update-env"]) {
         return [[DOEnvironmentManager sharedManager] isJailbroken];
     }
     return YES;

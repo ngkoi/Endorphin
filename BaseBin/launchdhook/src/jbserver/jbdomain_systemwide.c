@@ -538,7 +538,8 @@ static int systemwide_set_stealth_mode(audit_token_t *callerToken, bool enabled)
 	if (enabled) {
 		unlink("/var/jb");
 	} else {
-		if (access("/var/jb", F_OK) != 0 && gSystemInfo.jailbreakInfo.rootPath) {
+		struct stat st;
+		if (lstat("/var/jb", &st) != 0 && gSystemInfo.jailbreakInfo.rootPath) {
 			symlink(gSystemInfo.jailbreakInfo.rootPath, "/var/jb");
 		}
 	}
