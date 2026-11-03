@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     steps:
       - name: Xcode Setup
         uses: maxim-lobanov/setup-xcode@v1
@@ -79,8 +79,8 @@ jobs:
           set -x
           git clone https://github.com/CRKatri/trustcache
           cd trustcache
-          export CFLAGS="$CFLAGS -I$(brew --prefix openssl)/include -arch arm64"
-          export LDFLAGS="$LDFLAGS -L$(brew --prefix openssl)/lib -arch arm64"
+          export CFLAGS="$CFLAGS -I$(brew --prefix openssl)/include -arch $(uname -m)"
+          export LDFLAGS="$LDFLAGS -L$(brew --prefix openssl)/lib -arch $(uname -m)"
           gmake -j$(sysctl -n hw.logicalcpu) OPENSSL=1
           sudo cp trustcache /opt/procursus/bin/
 
