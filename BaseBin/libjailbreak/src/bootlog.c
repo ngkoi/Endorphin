@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <libjailbreak/jbroot.h>
+#include "jbroot.h"
 #include <xpc/xpc.h>
 #include <xpc_private.h>
 
