@@ -97,6 +97,63 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 
 %end
 
+@interface SBApplication : NSObject
+- (NSString *)bundleIdentifier;
+@end
+
+%hook SBApplication
+
+- (void)didActivate
+{
+	%orig;
+	@try {
+		NSString *bundleID = [self bundleIdentifier];
+		if (bundleID && is_stealth_bundle_id(bundleID)) {
+			set_stealth_var_jb_hidden(YES);
+		} else {
+			set_stealth_var_jb_hidden(NO);
+		}
+	}
+	@catch (NSException *e) {
+	}
+}
+
+- (void)didDeactivate
+{
+	%orig;
+	@try {
+		NSString *bundleID = [self bundleIdentifier];
+		if (bundleID && is_stealth_bundle_id(bundleID)) {
+			set_stealth_var_jb_hidden(NO);
+		}
+	}
+	@catch (NSException *e) {
+	}
+}
+
+%end
+
+%hook FBSApplicationLibrary
+
+- (id)applicationInfoForBundleIdentifier:(NSString *)bundleIdentifier
+{
+	id result = %orig;
+	if (gStealthVarJbHidden) {
+		if (result && [result respondsToSelector:@selector(executableURL)]) {
+			NSURL *execURL = [result performSelector:@selector(executableURL)];
+			if (execURL) {
+				const char *p = execURL.path.fileSystemRepresentation;
+				if (strstr(p, "/procursus/") || strstr(p, "/var/jb/")) {
+					return nil;
+				}
+			}
+		}
+	}
+	return result;
+}
+
+%end
+
 %hookf(int, fcntl, int fildes, int cmd, ...) {
 	if (cmd == F_SETPROTECTIONCLASS) {
 		char filePath[PATH_MAX];

@@ -446,6 +446,9 @@ static int spawn_exec_hook_common(bool isExec,
 				envbuf_unsetenv(&envc, "LAUNCHD_UUID");
 				envbuf_unsetenv(&envc, "JB_ROOT_PATH");
 				envbuf_unsetenv(&envc, "JB_BOOT_UUID");
+				if (!(spawnConfig & kSpawnConfigInject) && getpid() == 1) {
+					unlink("/var/jb");
+				}
 			}
 		}
 

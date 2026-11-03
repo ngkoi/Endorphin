@@ -1,6 +1,11 @@
 #include <sandbox.h>
 #include <substrate.h>
 #include <litehook.h>
+#include <libproc.h>
+#include <bsm/audit.h>
+#include <string.h>
+
+extern pid_t audit_token_to_pid(audit_token_t atoken);
 
 int (*sandbox_check_by_audit_token_orig)(audit_token_t au, const char *operation, int sandbox_filter_type, ...);
 int sandbox_check_by_audit_token_hook(audit_token_t au, const char *operation, int sandbox_filter_type, ...)
@@ -21,8 +26,18 @@ int sandbox_check_by_audit_token_hook(audit_token_t au, const char *operation, i
 	if (name && operation) {
 		if (strcmp(operation, "mach-lookup") == 0) {
 			if (strncmp((char *)name, "cy:", 3) == 0 || strncmp((char *)name, "lh:", 3) == 0) {
-				/* always allow */
-				return 0;
+				pid_t callerPid = audit_token_to_pid(au);
+				char pathBuf[4096];
+				bool isSandboxedApp = false;
+				if (callerPid > 0 && proc_pidpath(callerPid, pathBuf, sizeof(pathBuf)) > 0) {
+					if (strstr(pathBuf, "/containers/Bundle/Application/")) {
+						isSandboxedApp = true;
+					}
+				}
+				if (!isSandboxedApp) {
+					/* always allow for tweaks / system daemons / unsandboxed processes */
+					return 0;
+				}
 			}
 		}
 	}

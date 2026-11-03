@@ -10,6 +10,6 @@ TWEAK_NAME = rootlesshooks
 
 rootlesshooks_FILES = $(wildcard *.x)
 rootlesshooks_CFLAGS = -fobjc-arc -I../.include
-rootlesshooks_LDFLAGS = -rpath @loader_path/fallback -L../libjailbreak -ljailbreak
+rootlesshooks_LDFLAGS = -rpath @loader_path/fallback -L../.build -L../libjailbreak -ljailbreak
 
 include $(THEOS_MAKE_PATH)/tweak.mk

@@ -69,6 +69,14 @@ static BOOL is_pid_stealth(pid_t pid)
 	return stealth;
 }
 
+static BOOL is_app_store_pid(pid_t pid)
+{
+	if (pid <= 1) return NO;
+	char path[PATH_MAX];
+	if (proc_pidpath(pid, path, sizeof(path)) <= 0) return NO;
+	return (strstr(path, "/containers/Bundle/Application/") != NULL);
+}
+
 @interface LSApplicationProxy : NSObject
 + (id)applicationProxyForIdentifier:(id)arg1;
 - (NSURL *)bundleURL;
@@ -163,7 +171,7 @@ static const void *kBlockSchemeTagKey = &kBlockSchemeTagKey;
 	BOOL blocked = NO;
 	if (connection) {
 		pid_t pid = connection.processIdentifier;
-		if (is_pid_stealth(pid)) {
+		if (is_pid_stealth(pid) || is_app_store_pid(pid)) {
 			if (is_jailbreak_url_scheme(url.scheme)) {
 				objc_setAssociatedObject(url, kBlockSchemeTagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 				blocked = YES;
@@ -190,7 +198,7 @@ static const void *kBlockSchemeTagKey = &kBlockSchemeTagKey;
 {
 	if (self.XPCConnection) {
 		pid_t pid = self.XPCConnection.processIdentifier;
-		if (is_pid_stealth(pid)) {
+		if (is_pid_stealth(pid) || is_app_store_pid(pid)) {
 			LSApplicationProxy *appProxy = [NSClassFromString(@"LSApplicationProxy") applicationProxyForIdentifier:identifier];
 			if (appProxy && [appProxy respondsToSelector:@selector(bundleURL)]) {
 				NSURL *bURL = [appProxy performSelector:@selector(bundleURL)];
