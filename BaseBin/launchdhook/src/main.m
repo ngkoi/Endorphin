@@ -54,15 +54,20 @@ bool gFreeBootLogoBeforeBackboardd = NO;
 void draw_boot_logo(const char *bootLogoPath)
 {
 	exec_with_asl_disabled(^{
-		if (!gBootLogoDrawCtx) {
-			bootlog_init(NULL, bootLogoPath);
-			gBootLogoDrawCtx = bootlog_get_drawctx();
+		const char *logoPath = bootLogoPath;
+		if (!logoPath) {
+			logoPath = JBROOT_PATH("/basebin/bootlogo.jp2");
+		}
+		if (access(logoPath, R_OK) != 0) {
+			logoPath = NULL;
 		}
 
-		if (bootLogoPath) {
-			if (!access(bootLogoPath, R_OK)) {
-				killall("/usr/libexec/backboardd", SIGTERM);
-			}
+		killall("/usr/libexec/backboardd", SIGTERM);
+		usleep(30000);
+
+		if (!gBootLogoDrawCtx) {
+			bootlog_init(NULL, logoPath);
+			gBootLogoDrawCtx = bootlog_get_drawctx();
 		}
 	});
 }

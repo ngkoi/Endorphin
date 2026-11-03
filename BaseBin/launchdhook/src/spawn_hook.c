@@ -27,6 +27,7 @@ extern void systemwide_domain_set_enabled(bool enabled);
 
 extern bool gInEarlyBoot;
 extern bool gFreeBootLogoBeforeBackboardd;
+void draw_boot_logo(const char *bootLogoPath);
 void free_boot_logo(void);
 
 static bool string_contains_nocase(const char *haystack, const char *needle)
@@ -136,6 +137,9 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 			// This spawn will perform a userspace reboot...
 			// Instead of the ordinary hook, we want to reinsert this dylib
 			// This has already been done in envp so we only need to call the original posix_spawn
+
+			draw_boot_logo(JBROOT_PATH("/basebin/bootlogo.jp2"));
+			gFreeBootLogoBeforeBackboardd = true;
 
 			// We are back in "early boot" for the remainder of this launchd instance
 			// Mainly so we don't lock up while spawning boomerang
