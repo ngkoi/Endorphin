@@ -5,8 +5,6 @@
 #include <bsm/audit.h>
 #include <string.h>
 
-extern pid_t audit_token_to_pid(audit_token_t atoken);
-
 int (*sandbox_check_by_audit_token_orig)(audit_token_t au, const char *operation, int sandbox_filter_type, ...);
 int sandbox_check_by_audit_token_hook(audit_token_t au, const char *operation, int sandbox_filter_type, ...)
 {
