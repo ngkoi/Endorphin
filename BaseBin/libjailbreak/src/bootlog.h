@@ -18,11 +18,11 @@ extern "C" {
 #define BOOTLOG_COLOR_CYAN    0xFF38BDF8
 #define BOOTLOG_COLOR_GRAY    0xFF94A3B8
 
-// Initialize on-screen boot console
+// Initialize on-screen boot console or Windows XP boot animation
 // If bootLogoPath is provided, draws the boot logo in upper area first
 int bootlog_init(struct drawctx *ctx, const char *bootLogoPath);
 
-// Print formatted message to on-screen console and /var/tmp/boot.log
+// Print formatted message to on-screen console (if verbose) and /var/tmp/boot.log
 void bootlog_printf(uint32_t color, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 // Convenience log functions
@@ -34,8 +34,14 @@ void bootlog_error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 // Get active draw context
 struct drawctx *bootlog_get_drawctx(void);
 
-// Free boot console resources (called before backboardd takes screen)
+// Free boot console / animation resources (called before backboardd takes screen)
 void bootlog_free(void);
+
+// Windows XP Boot Animation helpers
+void bootanim_start(struct drawctx *ctx);
+void bootanim_finish(void);
+void bootanim_free(void);
+bool is_verbose_boot_enabled(void);
 
 #ifdef __cplusplus
 }

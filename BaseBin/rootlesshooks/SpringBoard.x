@@ -40,34 +40,155 @@ bool string_has_prefix(const char *str, const char* prefix)
 
 %end
 
+static NSDictionary *gCachedConfig = nil;
+
+static NSDictionary *get_stealth_config(void)
+{
+	NSDictionary *newConfig = [NSDictionary dictionaryWithContentsOfFile:JBROOT_PATH_NSSTRING(@"/basebin/config.plist")];
+	if (newConfig) {
+		gCachedConfig = newConfig;
+	}
+	return gCachedConfig;
+}
+
 static BOOL is_stealth_bundle_id(NSString *bundleID)
 {
 	if (!bundleID || bundleID.length == 0) return NO;
 
-	static NSDictionary *config = nil;
-	static NSTimeInterval lastCheck = 0;
-	NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-	if (now - lastCheck > 2.0 || !config) {
-		lastCheck = now;
-		config = [NSDictionary dictionaryWithContentsOfFile:JBROOT_PATH_NSSTRING(@"/basebin/config.plist")];
+	NSDictionary *config = get_stealth_config();
+	if (config) {
+		NSNumber *stealthMode = config[@"StealthMode"];
+		if (stealthMode && ![stealthMode boolValue]) return NO;
+
+		NSArray *stealthApps = config[@"StealthApps"];
+		if (stealthApps) {
+			for (NSString *app in stealthApps) {
+				if ([bundleID isEqualToString:app] || [bundleID localizedCaseInsensitiveContainsString:app]) {
+					return YES;
+				}
+			}
+		}
 	}
 
-	NSNumber *stealthMode = config[@"StealthMode"];
-	if (stealthMode && ![stealthMode boolValue]) return NO;
+	// Built-in safety fallback for high-security applications
+	if ([bundleID localizedCaseInsensitiveContainsString:@"vn.com.vneid"] ||
+	    [bundleID localizedCaseInsensitiveContainsString:@"com.mbmobile"] ||
+	    [bundleID localizedCaseInsensitiveContainsString:@"VNID"] ||
+	    [bundleID localizedCaseInsensitiveContainsString:@"MB Bank"] ||
+	    [bundleID localizedCaseInsensitiveContainsString:@"shopee"] ||
+	    [bundleID localizedCaseInsensitiveContainsString:@"ShopeeVN"] ||
+	    [bundleID localizedCaseInsensitiveContainsString:@"com.beeasy.shopee.vn"]) {
+		return YES;
+	}
 
-	NSArray *stealthApps = config[@"StealthApps"];
-	if (!stealthApps) return NO;
-
-	return [stealthApps containsObject:bundleID];
+	return NO;
 }
 
 static BOOL gStealthVarJbHidden = NO;
+static NSString *gActiveStealthBundle = nil;
 
 static void set_stealth_var_jb_hidden(BOOL hidden)
 {
 	if (gStealthVarJbHidden != hidden) {
 		gStealthVarJbHidden = hidden;
 		jbclient_systemwide_set_stealth_mode(hidden);
+	}
+}
+
+static void update_stealth_mode_for_display(NSString *bundleID)
+{
+	if (bundleID && is_stealth_bundle_id(bundleID)) {
+		gActiveStealthBundle = bundleID;
+		set_stealth_var_jb_hidden(YES);
+	} else if (gActiveStealthBundle) {
+		gActiveStealthBundle = nil;
+		set_stealth_var_jb_hidden(NO);
+	}
+}
+
+// Battery Drain SafeShutdown Hibernation Protection
+static BOOL gInDeepHibernation = NO;
+
+static BOOL is_battery_drain_protection_enabled(void)
+{
+	NSDictionary *config = get_stealth_config();
+	if (config) {
+		NSNumber *opt = config[@"BatteryDrainProtection"];
+		if (opt) return [opt boolValue];
+	}
+	return YES; // Default enabled
+}
+
+static BOOL should_enter_deep_hibernation(void)
+{
+	if (!is_battery_drain_protection_enabled()) return NO;
+
+	UIDevice *device = [UIDevice currentDevice];
+	[device setBatteryMonitoringEnabled:YES];
+	float level = [device batteryLevel];
+	UIDeviceBatteryState state = [device batteryState];
+
+	if (state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull) {
+		return NO;
+	}
+
+	// Trigger on critical battery level (<= 2%)
+	if (level >= 0.0f && level <= 0.02f) {
+		return YES;
+	}
+
+	return NO;
+}
+
+@interface SBBacklightController : NSObject
++ (instancetype)sharedInstance;
+- (void)setBacklightFactor:(float)factor;
+- (float)backlightFactor;
+@end
+
+@interface SBLockScreenManager : NSObject
++ (instancetype)sharedInstance;
+- (void)lockUIFromSource:(int)source withOptions:(id)options;
+- (void)wakeUpScreenForReason:(id)reason;
+@end
+
+static void enter_deep_hibernation(void)
+{
+	if (gInDeepHibernation) return;
+	gInDeepHibernation = YES;
+
+	@try {
+		SBLockScreenManager *lsm = [%c(SBLockScreenManager) sharedInstance];
+		if (lsm && [lsm respondsToSelector:@selector(lockUIFromSource:withOptions:)]) {
+			[lsm lockUIFromSource:1 withOptions:nil];
+		}
+
+		SBBacklightController *bl = [%c(SBBacklightController) sharedInstance];
+		if (bl && [bl respondsToSelector:@selector(setBacklightFactor:)]) {
+			[bl setBacklightFactor:0.0f];
+		}
+	}
+	@catch (NSException *e) {
+	}
+}
+
+static void exit_deep_hibernation(void)
+{
+	if (!gInDeepHibernation) return;
+	gInDeepHibernation = NO;
+
+	@try {
+		SBBacklightController *bl = [%c(SBBacklightController) sharedInstance];
+		if (bl && [bl respondsToSelector:@selector(setBacklightFactor:)]) {
+			[bl setBacklightFactor:1.0f];
+		}
+
+		SBLockScreenManager *lsm = [%c(SBLockScreenManager) sharedInstance];
+		if (lsm && [lsm respondsToSelector:@selector(wakeUpScreenForReason:)]) {
+			[lsm wakeUpScreenForReason:@"EndorphinChargerPluggedIn"];
+		}
+	}
+	@catch (NSException *e) {
 	}
 }
 
@@ -84,15 +205,68 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 		if (currentDisplay && [currentDisplay respondsToSelector:@selector(bundleIdentifier)]) {
 			bundleID = [currentDisplay bundleIdentifier];
 		}
-
-		if (bundleID && is_stealth_bundle_id(bundleID)) {
-			set_stealth_var_jb_hidden(YES);
-		} else {
-			set_stealth_var_jb_hidden(NO);
-		}
+		update_stealth_mode_for_display(bundleID);
 	}
 	@catch (NSException *e) {
 	}
+}
+
+- (void)_shutdownWithOptions:(id)options
+{
+	if (should_enter_deep_hibernation()) {
+		enter_deep_hibernation();
+		return;
+	}
+	%orig;
+}
+
+- (void)_handlePhysicalButtonEvent:(id)event
+{
+	if (gInDeepHibernation) {
+		return; // Suppress screen wakeup on physical buttons while hibernating
+	}
+	%orig;
+}
+
+%end
+
+@interface FBSystemService : NSObject
+@end
+
+%hook FBSystemService
+
+- (void)shutdownWithOptions:(id)options
+{
+	if (should_enter_deep_hibernation()) {
+		enter_deep_hibernation();
+		return;
+	}
+	%orig;
+}
+
+%end
+
+%hook SBBacklightController
+
+- (void)setBacklightFactor:(float)factor
+{
+	if (gInDeepHibernation) {
+		%orig(0.0f);
+		return;
+	}
+	%orig(factor);
+}
+
+%end
+
+%hook SBLockScreenManager
+
+- (void)wakeUpScreenForReason:(id)reason
+{
+	if (gInDeepHibernation) {
+		return;
+	}
+	%orig;
 }
 
 %end
@@ -109,22 +283,7 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 	@try {
 		NSString *bundleID = [self bundleIdentifier];
 		if (bundleID && is_stealth_bundle_id(bundleID)) {
-			set_stealth_var_jb_hidden(YES);
-		} else {
-			set_stealth_var_jb_hidden(NO);
-		}
-	}
-	@catch (NSException *e) {
-	}
-}
-
-- (void)didDeactivate
-{
-	%orig;
-	@try {
-		NSString *bundleID = [self bundleIdentifier];
-		if (bundleID && is_stealth_bundle_id(bundleID)) {
-			set_stealth_var_jb_hidden(NO);
+			update_stealth_mode_for_display(bundleID);
 		}
 	}
 	@catch (NSException *e) {
@@ -184,4 +343,26 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 void springboardInit(void)
 {
 	%init();
+
+	// Battery monitoring for SafeShutdown / Deep Hibernation
+	[[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
+
+	[[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceBatteryStateDidChangeNotification
+													  object:nil
+													   queue:[NSOperationQueue mainQueue]
+												  usingBlock:^(NSNotification *note) {
+		UIDeviceBatteryState state = [UIDevice currentDevice].batteryState;
+		if (gInDeepHibernation && (state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull)) {
+			exit_deep_hibernation();
+		}
+	}];
+
+	[[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceBatteryLevelDidChangeNotification
+													  object:nil
+													   queue:[NSOperationQueue mainQueue]
+												  usingBlock:^(NSNotification *note) {
+		if (should_enter_deep_hibernation() && !gInDeepHibernation) {
+			enter_deep_hibernation();
+		}
+	}];
 }

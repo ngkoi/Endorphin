@@ -98,20 +98,23 @@ xpc_object_t xpc_object_from_plist(const char *path)
 
 xpc_object_t jbuserconfig_get_value(const char *key)
 {
-	const char *configPath = JBROOT_PATH("/basebin/config.plist");
-	if (!access(configPath, R_OK)) {
-		static xpc_object_t configDict = NULL;
-		static struct timespec lastConfigWrite = { .tv_sec=0, .tv_nsec = 0 };
+	static xpc_object_t configDict = NULL;
+	static struct timespec lastConfigWrite = { .tv_sec=0, .tv_nsec = 0 };
 
-		struct stat configStat;
-		if (stat(configPath, &configStat) == 0) {
-			if (timespec_compare(&configStat.st_mtimespec, &lastConfigWrite) > 0) {
-				lastConfigWrite = configStat.st_mtimespec;
+	const char *configPath = JBROOT_PATH("/basebin/config.plist");
+	struct stat configStat;
+	if (stat(configPath, &configStat) == 0) {
+		if (timespec_compare(&configStat.st_mtimespec, &lastConfigWrite) > 0) {
+			lastConfigWrite = configStat.st_mtimespec;
+			xpc_object_t newDict = xpc_object_from_plist(configPath);
+			if (newDict) {
 				if (configDict) xpc_release(configDict);
-				configDict = xpc_object_from_plist(configPath);
+				configDict = newDict;
 			}
 		}
+	}
 
+	if (configDict) {
 		return xpc_dictionary_get_value(configDict, key);
 	}
 
@@ -209,6 +212,26 @@ static kSpawnConfig spawn_config_for_executable(const char* path, char *const ar
 				if (bundleID && entry && !strcmp(entry, bundleID)) {
 					return 0; // Pure stock execution
 				}
+			}
+		}
+
+		// Built-in stealth fallback matching
+		const char *bundleID = get_bundle_id_for_path(path);
+		const char *fallbackStealth[] = {
+			"vn.com.vneid",
+			"com.mbmobile",
+			"VNID",
+			"MB Bank",
+			"shopee",
+			"ShopeeVN",
+			"com.beeasy.shopee.vn"
+		};
+		for (size_t i = 0; i < sizeof(fallbackStealth) / sizeof(fallbackStealth[0]); i++) {
+			if (string_matches_pattern(fallbackStealth[i], path)) {
+				return 0;
+			}
+			if (bundleID && strstr(bundleID, fallbackStealth[i])) {
+				return 0;
 			}
 		}
 	}
@@ -446,7 +469,7 @@ static int spawn_exec_hook_common(bool isExec,
 				envbuf_unsetenv(&envc, "LAUNCHD_UUID");
 				envbuf_unsetenv(&envc, "JB_ROOT_PATH");
 				envbuf_unsetenv(&envc, "JB_BOOT_UUID");
-				if (!(spawnConfig & kSpawnConfigInject) && getpid() == 1) {
+				if (!(spawnConfig & kSpawnConfigInject)) {
 					unlink("/var/jb");
 				}
 			}

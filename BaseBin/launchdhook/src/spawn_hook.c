@@ -1,4 +1,5 @@
 #include <spawn.h>
+#include <strings.h>
 #include "../systemhook/src/common/common.h"
 #include "../systemhook/src/common/envbuf.h"
 #include "boomerang.h"
@@ -27,6 +28,61 @@ extern void systemwide_domain_set_enabled(bool enabled);
 extern bool gInEarlyBoot;
 extern bool gFreeBootLogoBeforeBackboardd;
 void free_boot_logo(void);
+
+static bool string_contains_nocase(const char *haystack, const char *needle)
+{
+	if (!haystack || !needle) return false;
+	size_t hlen = strlen(haystack);
+	size_t nlen = strlen(needle);
+	if (nlen > hlen) return false;
+	for (size_t i = 0; i <= hlen - nlen; i++) {
+		if (strncasecmp(&haystack[i], needle, nlen) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool is_stealth_xpcproxy_target(const char *arg)
+{
+	if (!arg) return false;
+
+	xpc_object_t stealthModeObj = jbuserconfig_get_value("StealthMode");
+	bool stealthEnabled = true;
+	if (stealthModeObj && xpc_get_type(stealthModeObj) == XPC_TYPE_BOOL) {
+		stealthEnabled = xpc_bool_get_value(stealthModeObj);
+	}
+
+	if (stealthEnabled) {
+		xpc_object_t stealthApps = jbuserconfig_get_value("StealthApps");
+		if (stealthApps && xpc_get_type(stealthApps) == XPC_TYPE_ARRAY) {
+			size_t count = xpc_array_get_count(stealthApps);
+			for (size_t i = 0; i < count; i++) {
+				const char *entry = xpc_array_get_string(stealthApps, i);
+				if (entry && string_contains_nocase(arg, entry)) {
+					return true;
+				}
+			}
+		}
+	}
+
+	const char *fallbackTargets[] = {
+		"vn.com.vneid",
+		"com.mbmobile",
+		"VNID",
+		"MB Bank",
+		"shopee",
+		"ShopeeVN",
+		"com.beeasy.shopee.vn"
+	};
+	for (size_t i = 0; i < sizeof(fallbackTargets) / sizeof(fallbackTargets[0]); i++) {
+		if (string_contains_nocase(arg, fallbackTargets[i])) {
+			return true;
+		}
+	}
+
+	return false;
+}
 
 void early_boot_done(void)
 {
@@ -196,6 +252,13 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 					}
 				}
 			}
+		}
+	}
+
+	// Stealth Mode: Unlink /var/jb before spawning xpcproxy for stealth applications
+	if (!strcmp(path, "/usr/libexec/xpcproxy")) {
+		if (argv && argv[1] && is_stealth_xpcproxy_target(argv[1])) {
+			unlink("/var/jb");
 		}
 	}
 

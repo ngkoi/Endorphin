@@ -654,6 +654,8 @@ void *boomerang_server(struct boomerang_info *info)
     configDict[@"DeepSystemOptimizer"] = @([pm boolPreferenceValueForKey:@"deepSystemOptimizer" fallback:YES]);
     configDict[@"SchedulerBoost"] = @([pm boolPreferenceValueForKey:@"schedulerBoost" fallback:YES]);
     configDict[@"StealthMode"] = @([pm boolPreferenceValueForKey:@"stealthMode" fallback:YES]);
+    configDict[@"BatteryDrainProtection"] = @([pm boolPreferenceValueForKey:@"batteryDrainProtection" fallback:YES]);
+    configDict[@"VerboseBoot"] = @([pm boolPreferenceValueForKey:@"verboseLogsEnabled" fallback:NO]);
     configDict[@"StealthApps"] = [pm preferenceValueForKey:@"stealthApps"] ?: @[];
     [configDict writeToFile:configPath atomically:YES];
     

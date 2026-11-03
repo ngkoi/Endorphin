@@ -300,6 +300,12 @@
             [aftermarketScreenSpecifier setProperty:@NO forKey:@"default"];
             [specifiers addObject:aftermarketScreenSpecifier];
 
+            PSSpecifier *batteryProtectionSpecifier = [PSSpecifier preferenceSpecifierNamed:@"Battery Drain Protection" target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [batteryProtectionSpecifier setProperty:@YES forKey:@"enabled"];
+            [batteryProtectionSpecifier setProperty:@"batteryDrainProtection" forKey:@"key"];
+            [batteryProtectionSpecifier setProperty:@YES forKey:@"default"];
+            [specifiers addObject:batteryProtectionSpecifier];
+
             PSSpecifier *manageStealthSpecifier = [PSSpecifier preferenceSpecifierNamed:@"" target:self set:defSetter get:defGetter detail:nil cell:PSStaticTextCell edit:nil];
             [manageStealthSpecifier setProperty:@"Manage Stealth Apps" forKey:@"title"];
             [manageStealthSpecifier setProperty:[DOButtonCell class] forKey:@"cellClass"];
@@ -454,6 +460,8 @@
         dict[@"SchedulerBoost"] = @([pm boolPreferenceValueForKey:@"schedulerBoost" fallback:YES]);
         dict[@"StealthMode"] = @([pm boolPreferenceValueForKey:@"stealthMode" fallback:YES]);
         dict[@"AftermarketScreenMode"] = @([pm boolPreferenceValueForKey:@"aftermarketScreenMode" fallback:NO]);
+        dict[@"BatteryDrainProtection"] = @([pm boolPreferenceValueForKey:@"batteryDrainProtection" fallback:YES]);
+        dict[@"VerboseBoot"] = @([pm boolPreferenceValueForKey:@"verboseLogsEnabled" fallback:NO]);
 
         NSArray *stealthApps = [pm preferenceValueForKey:@"stealthApps"];
         dict[@"StealthApps"] = stealthApps ?: @[];
