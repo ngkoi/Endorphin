@@ -286,6 +286,7 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 
 	if (isSB && ret == 0) {
 		bootlog_success("SpringBoard spawned successfully");
+		bootanim_finish();
 		respring_protection_did_spawn_springboard();
 	}
 

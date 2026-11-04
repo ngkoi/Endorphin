@@ -201,6 +201,37 @@ static void exit_deep_hibernation(void)
 
 %hook SpringBoard
 
+- (void)applicationDidFinishLaunching:(id)application
+{
+	%orig;
+
+	// Battery monitoring for SafeShutdown / Deep Hibernation (safely initialized after UIKit launch)
+	@try {
+		[[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
+
+		[[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceBatteryStateDidChangeNotification
+														  object:nil
+														   queue:[NSOperationQueue mainQueue]
+													  usingBlock:^(NSNotification *note) {
+			UIDeviceBatteryState state = [UIDevice currentDevice].batteryState;
+			if (gInDeepHibernation && (state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull)) {
+				exit_deep_hibernation();
+			}
+		}];
+
+		[[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceBatteryLevelDidChangeNotification
+														  object:nil
+														   queue:[NSOperationQueue mainQueue]
+													  usingBlock:^(NSNotification *note) {
+			if (should_enter_deep_hibernation() && !gInDeepHibernation) {
+				enter_deep_hibernation();
+			}
+		}];
+	}
+	@catch (NSException *e) {
+	}
+}
+
 - (void)frontDisplayDidChange:(id)currentDisplay
 {
 	%orig;
@@ -239,18 +270,6 @@ static void exit_deep_hibernation(void)
 
 %hook FBSystemService
 
-- (void *)openApplication:(NSString *)bundleIdentifier withOptions:(id)options originator:(id)originator requestID:(void *)requestID completion:(void *)completion
-{
-	@try {
-		if (bundleIdentifier && is_stealth_bundle_id(bundleIdentifier)) {
-			update_stealth_mode_for_display(bundleIdentifier);
-		}
-	}
-	@catch (NSException *e) {
-	}
-	return %orig;
-}
-
 - (void)shutdownWithOptions:(id)options
 {
 	if (should_enter_deep_hibernation()) {
@@ -287,61 +306,6 @@ static void exit_deep_hibernation(void)
 
 %end
 
-@interface SBApplication : NSObject
-- (NSString *)bundleIdentifier;
-@end
-
-%hook SBApplication
-
-- (void)willActivate
-{
-	%orig;
-	@try {
-		NSString *bundleID = [self bundleIdentifier];
-		if (bundleID && is_stealth_bundle_id(bundleID)) {
-			update_stealth_mode_for_display(bundleID);
-		}
-	}
-	@catch (NSException *e) {
-	}
-}
-
-- (void)didActivate
-{
-	%orig;
-	@try {
-		NSString *bundleID = [self bundleIdentifier];
-		if (bundleID && is_stealth_bundle_id(bundleID)) {
-			update_stealth_mode_for_display(bundleID);
-		}
-	}
-	@catch (NSException *e) {
-	}
-}
-
-%end
-
-%hook FBSApplicationLibrary
-
-- (id)applicationInfoForBundleIdentifier:(NSString *)bundleIdentifier
-{
-	id result = %orig;
-	if (gStealthVarJbHidden) {
-		if (result && [result respondsToSelector:@selector(executableURL)]) {
-			NSURL *execURL = [result performSelector:@selector(executableURL)];
-			if (execURL) {
-				const char *p = execURL.path.fileSystemRepresentation;
-				if (strstr(p, "/procursus/") || strstr(p, "/var/jb/")) {
-					return nil;
-				}
-			}
-		}
-	}
-	return result;
-}
-
-%end
-
 %hookf(int, fcntl, int fildes, int cmd, ...) {
 	if (cmd == F_SETPROTECTIONCLASS) {
 		char filePath[PATH_MAX];
@@ -372,26 +336,4 @@ static void exit_deep_hibernation(void)
 void springboardInit(void)
 {
 	%init();
-
-	// Battery monitoring for SafeShutdown / Deep Hibernation
-	[[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
-
-	[[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceBatteryStateDidChangeNotification
-													  object:nil
-													   queue:[NSOperationQueue mainQueue]
-												  usingBlock:^(NSNotification *note) {
-		UIDeviceBatteryState state = [UIDevice currentDevice].batteryState;
-		if (gInDeepHibernation && (state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull)) {
-			exit_deep_hibernation();
-		}
-	}];
-
-	[[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceBatteryLevelDidChangeNotification
-													  object:nil
-													   queue:[NSOperationQueue mainQueue]
-												  usingBlock:^(NSNotification *note) {
-		if (should_enter_deep_hibernation() && !gInDeepHibernation) {
-			enter_deep_hibernation();
-		}
-	}];
 }

@@ -517,9 +517,6 @@ void bootanim_finish(void)
         drawctx_update(ctx);
     }
     pthread_mutex_unlock(&g_anim_mutex);
-
-    // Hold complete screen for 450ms
-    usleep(450000);
 }
 
 void bootanim_free(void)
@@ -760,7 +757,6 @@ void bootlog_free(void)
     pthread_mutex_lock(&g_console_mutex);
     if (g_console.active) {
         bootlog_printf(BOOTLOG_COLOR_GREEN, "[+] Boot complete, launching SpringBoard...");
-        usleep(300000);
         if (g_console.ctx && g_console.own_ctx) {
             drawctx_free(g_console.ctx);
         }
