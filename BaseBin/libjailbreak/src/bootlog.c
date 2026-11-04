@@ -157,43 +157,88 @@ static void console_render_locked(void)
     drawctx_update(con->ctx);
 }
 
-bool is_verbose_boot_enabled(void)
+static bool read_bool_from_plist(const char *path, const char *key1, const char *key2)
 {
-    const char *configPath = JBROOT_PATH("/basebin/config.plist");
-    int fd = open(configPath, O_RDONLY);
-    if (fd >= 0) {
-        struct stat s = {0};
-        if (fstat(fd, &s) == 0 && s.st_size > 0) {
-            void *addr = mmap(NULL, s.st_size, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
-            if (addr != MAP_FAILED) {
-                xpc_object_t dict = xpc_create_from_plist(addr, s.st_size);
-                munmap(addr, s.st_size);
-                close(fd);
-                if (dict) {
-                    bool verbose = false;
-                    xpc_object_t vObj = xpc_dictionary_get_value(dict, "VerboseBoot");
-                    if (vObj && xpc_get_type(vObj) == XPC_TYPE_BOOL) {
-                        verbose = xpc_bool_get_value(vObj);
-                    }
-                    if (!verbose) {
-                        xpc_object_t vlObj = xpc_dictionary_get_value(dict, "verboseLogsEnabled");
-                        if (vlObj && xpc_get_type(vlObj) == XPC_TYPE_BOOL) {
-                            verbose = xpc_bool_get_value(vlObj);
-                        }
-                    }
-                    xpc_release(dict);
-                    return verbose;
-                }
+    if (!path) return false;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return false;
+
+    struct stat s = {0};
+    if (fstat(fd, &s) != 0 || s.st_size <= 0) {
+        close(fd);
+        return false;
+    }
+
+    void *addr = mmap(NULL, s.st_size, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
+    if (addr == MAP_FAILED) {
+        close(fd);
+        return false;
+    }
+
+    bool val = false;
+    xpc_object_t dict = xpc_create_from_plist(addr, s.st_size);
+    munmap(addr, s.st_size);
+    close(fd);
+
+    if (dict) {
+        if (key1) {
+            xpc_object_t obj = xpc_dictionary_get_value(dict, key1);
+            if (obj && xpc_get_type(obj) == XPC_TYPE_BOOL) {
+                val = xpc_bool_get_value(obj);
             }
         }
-        close(fd);
+        if (!val && key2) {
+            xpc_object_t obj2 = xpc_dictionary_get_value(dict, key2);
+            if (obj2 && xpc_get_type(obj2) == XPC_TYPE_BOOL) {
+                val = xpc_bool_get_value(obj2);
+            }
+        }
+        xpc_release(dict);
+    }
+    return val;
+}
+
+bool is_verbose_boot_enabled(void)
+{
+    if (read_bool_from_plist(JBROOT_PATH("/basebin/config.plist"), "VerboseBoot", "verboseLogsEnabled")) {
+        return true;
+    }
+    if (read_bool_from_plist("/var/mobile/Library/Preferences/com.opa334.Dopamine.plist", "verboseLogsEnabled", "VerboseBoot")) {
+        return true;
     }
     return false;
 }
 
-#define ANIM_NUM_BLOCKS 6
+#define ANIM_NUM_BLOCKS 7
 
-static void draw_embedded_endorphin_logo(struct drawctx *ctx, int rot, int vw, int vh)
+static inline bool is_in_rounded_rect(int px, int py, int rx, int ry, int rw, int rh, int r)
+{
+    if (px < rx || px >= rx + rw || py < ry || py >= ry + rh) {
+        return false;
+    }
+    if (r <= 0) return true;
+
+    int dx = 0, dy = 0;
+    if (px < rx + r) {
+        dx = (rx + r) - px;
+    } else if (px >= rx + rw - r) {
+        dx = px - (rx + rw - 1 - r);
+    } else {
+        return true;
+    }
+
+    if (py < ry + r) {
+        dy = (ry + r) - py;
+    } else if (py >= ry + rh - r) {
+        dy = py - (ry + rh - 1 - r);
+    } else {
+        return true;
+    }
+
+    return (dx * dx + dy * dy) <= (r * r);
+}
+
+static void draw_embedded_endorphin_logo(struct drawctx *ctx, int rot, int vw, int vh, int center_y)
 {
     if (!ctx || !ctx->base) return;
 
@@ -201,7 +246,7 @@ static void draw_embedded_endorphin_logo(struct drawctx *ctx, int rot, int vw, i
     int logo_h = ENDORPHIN_LOGO_HEIGHT;
 
     int start_x = (vw - logo_w) / 2;
-    int start_y = (int)(vh * 0.44);
+    int start_y = center_y;
 
     uint32_t logo_color = 0xFFF1F5F9;
 
@@ -221,70 +266,79 @@ static inline uint32_t lerp_color(uint32_t c1, uint32_t c2, float t)
 {
     if (t <= 0.0f) return c1;
     if (t >= 1.0f) return c2;
-    uint32_t a1 = (c1 >> 24) & 0xFF, a2 = (c2 >> 24) & 0xFF;
-    uint32_t r1 = (c1 >> 16) & 0xFF, r2 = (c2 >> 16) & 0xFF;
-    uint32_t g1 = (c1 >> 8) & 0xFF,  g2 = (c2 >> 8) & 0xFF;
-    uint32_t b1 = c1 & 0xFF,         b2 = c2 & 0xFF;
 
-    uint32_t a = (uint32_t)(a1 + (a2 - a1) * t);
-    uint32_t r = (uint32_t)(r1 + (r2 - r1) * t);
-    uint32_t g = (uint32_t)(g1 + (g2 - g1) * t);
-    uint32_t b = (uint32_t)(b1 + (b2 - b1) * t);
+    int a1 = (c1 >> 24) & 0xFF, a2 = (c2 >> 24) & 0xFF;
+    int r1 = (c1 >> 16) & 0xFF, r2 = (c2 >> 16) & 0xFF;
+    int g1 = (c1 >> 8)  & 0xFF, g2 = (c2 >> 8)  & 0xFF;
+    int b1 = c1         & 0xFF, b2 = c2         & 0xFF;
 
-    return (a << 24) | (r << 16) | (g << 8) | b;
+    int a = (int)(a1 + (float)(a2 - a1) * t);
+    int r = (int)(r1 + (float)(r2 - r1) * t);
+    int g = (int)(g1 + (float)(g2 - g1) * t);
+    int b = (int)(b1 + (float)(b2 - b1) * t);
+
+    if (a < 0) a = 0; else if (a > 255) a = 255;
+    if (r < 0) r = 0; else if (r > 255) r = 255;
+    if (g < 0) g = 0; else if (g > 255) g = 255;
+    if (b < 0) b = 0; else if (b > 255) b = 255;
+
+    return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 }
 
 static inline uint32_t get_glossy_blue_pixel(int y_in_block, int block_h, int x_in_block, int block_w)
 {
-    if (y_in_block == 0) return 0xFFBAE6FD;
-    if (y_in_block == block_h - 1) return 0xFF0369A1;
-    if (x_in_block == 0 || x_in_block == block_w - 1) return 0xFF0284C7;
+    if (y_in_block == 0) return 0xFFD9EBFF; // Top soft highlight
+    if (y_in_block == block_h - 1) return 0xFF0E2B80; // Bottom rim
+    if (x_in_block == 0 || x_in_block == block_w - 1) return 0xFF1543B1; // Side border
 
     float rel = (float)(y_in_block - 1) / (float)(block_h - 3);
     if (rel < 0.20f) {
         float t = rel / 0.20f;
-        return lerp_color(0xFFE0F2FE, 0xFF7DD3FC, t);
-    } else if (rel < 0.50f) {
-        float t = (rel - 0.20f) / 0.30f;
-        return lerp_color(0xFF7DD3FC, 0xFF0EA5E9, t);
+        return lerp_color(0xFF3880E7, 0xFF1576FC, t);
+    } else if (rel < 0.45f) {
+        float t = (rel - 0.20f) / 0.25f;
+        return lerp_color(0xFF1576FC, 0xFF0362F1, t);
     } else if (rel < 0.75f) {
-        float t = (rel - 0.50f) / 0.25f;
-        return lerp_color(0xFF60A5FA, 0xFF0284C7, t);
+        float t = (rel - 0.45f) / 0.30f;
+        return lerp_color(0xFF0362F1, 0xFF104CC5, t);
     } else {
         float t = (rel - 0.75f) / 0.25f;
-        return lerp_color(0xFF0284C7, 0xFF0369A1, t);
+        return lerp_color(0xFF104CC5, 0xFF1543B1, t);
     }
 }
 
 static inline uint32_t get_glossy_green_pixel(int y_in_block, int block_h, int x_in_block, int block_w)
 {
-    if (y_in_block == 0) return 0xFFDCFCE7;
-    if (y_in_block == block_h - 1) return 0xFF15803D;
-    if (x_in_block == 0 || x_in_block == block_w - 1) return 0xFF16A34A;
+    if (y_in_block == 0) return 0xFFDBFEE0; // Top soft highlight
+    if (y_in_block == block_h - 1) return 0xFF156B34; // Bottom rim
+    if (x_in_block == 0 || x_in_block == block_w - 1) return 0xFF2E9955; // Side border
 
     float rel = (float)(y_in_block - 1) / (float)(block_h - 3);
     if (rel < 0.20f) {
         float t = rel / 0.20f;
-        return lerp_color(0xFFF0FDF4, 0xFF86EFAC, t);
-    } else if (rel < 0.50f) {
-        float t = (rel - 0.20f) / 0.30f;
-        return lerp_color(0xFF86EFAC, 0xFF22C55E, t);
+        return lerp_color(0xFF80E189, 0xFF6AEA69, t);
+    } else if (rel < 0.45f) {
+        float t = (rel - 0.20f) / 0.25f;
+        return lerp_color(0xFF6AEA69, 0xFF74EA4D, t);
     } else if (rel < 0.75f) {
-        float t = (rel - 0.50f) / 0.25f;
-        return lerp_color(0xFF86EFAC, 0xFF16A34A, t);
+        float t = (rel - 0.45f) / 0.30f;
+        return lerp_color(0xFF74EA4D, 0xFF42D27B, t);
     } else {
         float t = (rel - 0.75f) / 0.25f;
-        return lerp_color(0xFF16A34A, 0xFF15803D, t);
+        return lerp_color(0xFF42D27B, 0xFF2DB865, t);
     }
 }
 
 static void draw_glossy_block(struct drawctx *ctx, int bx1, int by1, int block_w, int block_h, int clip_x1, int clip_x2, int rot, bool is_green)
 {
+    int corner_r = 4;
     for (int y = 0; y < block_h; y++) {
         int py = by1 + y;
         for (int x = 0; x < block_w; x++) {
             int px = bx1 + x;
             if (px < clip_x1 || px > clip_x2) continue;
+            if (!is_in_rounded_rect(px, py, bx1, by1, block_w, block_h, corner_r)) continue;
+
             uint32_t color = is_green ?
                 get_glossy_green_pixel(y, block_h, x, block_w) :
                 get_glossy_blue_pixel(y, block_h, x, block_w);
@@ -305,54 +359,58 @@ static void *bootanim_worker(void *arg)
     int track_w = (int)(vw * 0.72);
     int track_h = (vw >= 1000) ? 54 : ((vw >= 640) ? 42 : 28);
     int track_x = (vw - track_w) / 2;
-    int track_y = (int)(vh * 0.58);
-    int border_thickness = 2;
+    int track_y = (int)(vh * 0.54);
+    int border_thickness = 3;
 
     int inner_x = track_x + border_thickness;
     int inner_y = track_y + border_thickness;
     int inner_w = track_w - 2 * border_thickness;
     int inner_h = track_h - 2 * border_thickness;
 
-    int block_w = (vw >= 1000) ? 26 : ((vw >= 640) ? 20 : 14);
+    int block_w = (vw >= 1000) ? 28 : ((vw >= 640) ? 22 : 16);
     int block_gap = (vw >= 1000) ? 6 : ((vw >= 640) ? 4 : 3);
     int block_h = inner_h - 6;
     int block_y1 = inner_y + 3;
     int group_w = ANIM_NUM_BLOCKS * block_w + (ANIM_NUM_BLOCKS - 1) * block_gap;
 
-    // Outer 3D recessed border
-    for (int x = track_x; x < track_x + track_w; x++) {
-        draw_pixel_raw(ctx, x, track_y, 0xFF475569, rot);
-        draw_pixel_raw(ctx, x, track_y + 1, 0xFF1E293B, rot);
-        draw_pixel_raw(ctx, x, track_y + track_h - 2, 0xFF334155, rot);
-        draw_pixel_raw(ctx, x, track_y + track_h - 1, 0xFF64748B, rot);
-    }
-    for (int y = track_y; y < track_y + track_h; y++) {
-        draw_pixel_raw(ctx, track_x, y, 0xFF475569, rot);
-        draw_pixel_raw(ctx, track_x + 1, y, 0xFF1E293B, rot);
-        draw_pixel_raw(ctx, track_x + track_w - 2, y, 0xFF334155, rot);
-        draw_pixel_raw(ctx, track_x + track_w - 1, y, 0xFF64748B, rot);
-    }
+    int track_radius = 6;
+    int inner_radius = 4;
 
-    // Initial inner track background
-    for (int y = inner_y; y < inner_y + inner_h; y++) {
-        for (int x = inner_x; x < inner_x + inner_w; x++) {
-            draw_pixel_raw(ctx, x, y, 0xFF050811, rot);
+    // Draw outer rounded frame with recessed shading
+    for (int y = track_y; y < track_y + track_h; y++) {
+        for (int x = track_x; x < track_x + track_w; x++) {
+            if (!is_in_rounded_rect(x, y, track_x, track_y, track_w, track_h, track_radius)) continue;
+            if (is_in_rounded_rect(x, y, inner_x, inner_y, inner_w, inner_h, inner_radius)) {
+                draw_pixel_raw(ctx, x, y, 0xFF050811, rot);
+            } else {
+                if (y == track_y || y == track_y + 1) {
+                    draw_pixel_raw(ctx, x, y, 0xFF475569, rot);
+                } else if (y >= track_y + track_h - 2) {
+                    draw_pixel_raw(ctx, x, y, 0xFF64748B, rot);
+                } else if (x == track_x || x == track_x + 1) {
+                    draw_pixel_raw(ctx, x, y, 0xFF334155, rot);
+                } else {
+                    draw_pixel_raw(ctx, x, y, 0xFF475569, rot);
+                }
+            }
         }
     }
     drawctx_update(ctx);
 
     int pos = -group_w;
-    int step = (vw >= 1000) ? 14 : ((vw >= 640) ? 10 : 7);
+    int step = (vw >= 1000) ? 22 : ((vw >= 640) ? 16 : 12);
 
     while (anim->running) {
         // Redraw inner track background
         for (int y = inner_y; y < inner_y + inner_h; y++) {
             for (int x = inner_x; x < inner_x + inner_w; x++) {
-                draw_pixel_raw(ctx, x, y, 0xFF050811, rot);
+                if (is_in_rounded_rect(x, y, inner_x, inner_y, inner_w, inner_h, inner_radius)) {
+                    draw_pixel_raw(ctx, x, y, 0xFF050811, rot);
+                }
             }
         }
 
-        // Draw glossy light-blue blocks
+        // Draw glossy light-blue rounded blocks
         for (int i = 0; i < ANIM_NUM_BLOCKS; i++) {
             int bx1 = inner_x + pos + i * (block_w + block_gap);
             int bx2 = bx1 + block_w - 1;
@@ -368,7 +426,7 @@ static void *bootanim_worker(void *arg)
         }
 
         drawctx_update(ctx);
-        usleep(20000); // 50 FPS
+        usleep(15000); // ~66 FPS
 
         pos += step;
         if (pos >= inner_w) {
@@ -426,23 +484,26 @@ void bootanim_finish(void)
         int track_w = (int)(vw * 0.72);
         int track_h = (vw >= 1000) ? 54 : ((vw >= 640) ? 42 : 28);
         int track_x = (vw - track_w) / 2;
-        int track_y = (int)(vh * 0.58);
-        int border_thickness = 2;
+        int track_y = (int)(vh * 0.54);
+        int border_thickness = 3;
 
         int inner_x = track_x + border_thickness;
         int inner_y = track_y + border_thickness;
         int inner_w = track_w - 2 * border_thickness;
         int inner_h = track_h - 2 * border_thickness;
 
-        int block_w = (vw >= 1000) ? 26 : ((vw >= 640) ? 20 : 14);
+        int block_w = (vw >= 1000) ? 28 : ((vw >= 640) ? 22 : 16);
         int block_gap = (vw >= 1000) ? 6 : ((vw >= 640) ? 4 : 3);
         int block_h = inner_h - 6;
         int block_y1 = inner_y + 3;
+        int inner_radius = 4;
 
         // Clear inner track
         for (int y = inner_y; y < inner_y + inner_h; y++) {
             for (int x = inner_x; x < inner_x + inner_w; x++) {
-                draw_pixel_raw(ctx, x, y, 0xFF050811, rot);
+                if (is_in_rounded_rect(x, y, inner_x, inner_y, inner_w, inner_h, inner_radius)) {
+                    draw_pixel_raw(ctx, x, y, 0xFF050811, rot);
+                }
             }
         }
 
@@ -504,19 +565,21 @@ int bootlog_init(struct drawctx *ctx, const char *bootLogoPath)
     int vw = (rot == 90 || rot == 270) ? (int)ctx->size.height : (int)ctx->size.width;
     int vh = (rot == 90 || rot == 270) ? (int)ctx->size.width : (int)ctx->size.height;
 
-    // Draw Endorphin boot logo: try file first, then fallback to embedded crisp bitmap
-    bool logo_drawn = false;
-    const char *logoPath = bootLogoPath ? bootLogoPath : JBROOT_PATH("/basebin/bootlogo.jp2");
-    if (logoPath && access(logoPath, R_OK) == 0) {
-        if (drawctx_draw_image_path(ctx, logoPath) == 0) {
-            logo_drawn = true;
+    // Draw Endorphin boot logo: if custom user image specified, use it; otherwise draw crisp embedded logo
+    int logo_y = (int)(vh * 0.54) - 120;
+    if (logo_y < 40) logo_y = 40;
+
+    bool custom_drawn = false;
+    if (bootLogoPath && strcmp(bootLogoPath, JBROOT_PATH("/basebin/bootlogo.jp2")) != 0 && access(bootLogoPath, R_OK) == 0) {
+        if (drawctx_draw_image_path(ctx, bootLogoPath) == 0) {
+            custom_drawn = true;
         }
     }
 
-    if (!logo_drawn) {
-        draw_embedded_endorphin_logo(ctx, rot, vw, vh);
-        drawctx_update(ctx);
+    if (!custom_drawn) {
+        draw_embedded_endorphin_logo(ctx, rot, vw, vh, logo_y);
     }
+    drawctx_update(ctx);
 
     // Create / truncate /var/tmp/boot.log
     FILE *f = fopen("/var/tmp/boot.log", "w");

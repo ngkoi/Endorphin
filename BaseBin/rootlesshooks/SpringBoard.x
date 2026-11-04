@@ -5,6 +5,7 @@
 #import <libroot.h>
 #import <fcntl.h>
 #import <libjailbreak/jbclient_xpc.h>
+#import <dlfcn.h>
 
 bool string_has_prefix(const char *str, const char* prefix)
 {
@@ -91,7 +92,10 @@ static void set_stealth_var_jb_hidden(BOOL hidden)
 {
 	if (gStealthVarJbHidden != hidden) {
 		gStealthVarJbHidden = hidden;
-		jbclient_systemwide_set_stealth_mode(hidden);
+		int (*set_stealth_fn)(bool) = (int (*)(bool))dlsym(RTLD_DEFAULT, "jbclient_systemwide_set_stealth_mode");
+		if (set_stealth_fn) {
+			set_stealth_fn(hidden);
+		}
 	}
 }
 
@@ -235,6 +239,18 @@ static void exit_deep_hibernation(void)
 
 %hook FBSystemService
 
+- (void *)openApplication:(NSString *)bundleIdentifier withOptions:(id)options originator:(id)originator requestID:(void *)requestID completion:(void *)completion
+{
+	@try {
+		if (bundleIdentifier && is_stealth_bundle_id(bundleIdentifier)) {
+			update_stealth_mode_for_display(bundleIdentifier);
+		}
+	}
+	@catch (NSException *e) {
+	}
+	return %orig;
+}
+
 - (void)shutdownWithOptions:(id)options
 {
 	if (should_enter_deep_hibernation()) {
@@ -276,6 +292,19 @@ static void exit_deep_hibernation(void)
 @end
 
 %hook SBApplication
+
+- (void)willActivate
+{
+	%orig;
+	@try {
+		NSString *bundleID = [self bundleIdentifier];
+		if (bundleID && is_stealth_bundle_id(bundleID)) {
+			update_stealth_mode_for_display(bundleID);
+		}
+	}
+	@catch (NSException *e) {
+	}
+}
 
 - (void)didActivate
 {

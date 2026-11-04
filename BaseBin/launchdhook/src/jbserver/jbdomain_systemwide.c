@@ -4,6 +4,7 @@
 #include <sandbox.h>
 #include <libproc.h>
 #include <sys/proc_info.h>
+#include <sys/mount.h>
 
 #include <libjailbreak/hookd.h>
 #include <libjailbreak/signatures.h>
@@ -533,15 +534,29 @@ static int systemwide_persona_fix(audit_token_t *callerToken, int childPid, uid_
 	return 0;
 }
 
-static int systemwide_set_stealth_mode(audit_token_t *callerToken, bool enabled)
+int systemwide_set_stealth_mode(audit_token_t *callerToken, bool enabled)
 {
 	if (enabled) {
 		unlink("/var/jb");
+
+		struct statfs fsb;
+		if (statfs("/usr/lib", &fsb) == 0 && strcmp(fsb.f_mntonname, "/usr/lib") == 0) {
+			unmount("/usr/lib", MNT_FORCE);
+		}
+
+		systemwide_domain_set_enabled(false);
 	} else {
 		struct stat st;
 		if (lstat("/var/jb", &st) != 0 && gSystemInfo.jailbreakInfo.rootPath) {
 			symlink(gSystemInfo.jailbreakInfo.rootPath, "/var/jb");
 		}
+
+		struct statfs fsb;
+		if (statfs("/usr/lib", &fsb) != 0 || strcmp(fsb.f_mntonname, "/usr/lib") != 0) {
+			mount("bindfs", "/usr/lib", MNT_RDONLY, (void *)JBROOT_PATH("/basebin/.fakelib"));
+		}
+
+		systemwide_domain_set_enabled(true);
 	}
 	return 0;
 }

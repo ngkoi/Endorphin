@@ -22,6 +22,7 @@ void abort_with_reason(uint32_t reason_namespace, uint64_t reason_code, const ch
 extern int systemwide_trust_file_by_path(const char *path);
 extern int platform_set_process_debugged(uint64_t pid, bool fullyDebugged);
 extern void systemwide_domain_set_enabled(bool enabled);
+extern int systemwide_set_stealth_mode(audit_token_t *callerToken, bool enabled);
 
 #define LOG_PROCESS_LAUNCHES 0
 
@@ -259,10 +260,10 @@ int __posix_spawn_hook(pid_t *restrict pid, const char *restrict path,
 		}
 	}
 
-	// Stealth Mode: Unlink /var/jb before spawning xpcproxy for stealth applications
+	// Stealth Mode: Hide jailbreak before spawning xpcproxy for stealth applications
 	if (!strcmp(path, "/usr/libexec/xpcproxy")) {
 		if (argv && argv[1] && is_stealth_xpcproxy_target(argv[1])) {
-			unlink("/var/jb");
+			systemwide_set_stealth_mode(NULL, true);
 		}
 	}
 

@@ -237,13 +237,11 @@
             [tweakInjectionSpecifier setProperty:@YES forKey:@"default"];
             [specifiers addObject:tweakInjectionSpecifier];
             
-            if (!envManager.isJailbroken) {
-                PSSpecifier *verboseLogSpecifier = [PSSpecifier preferenceSpecifierNamed:DOLocalizedString(@"Settings_Verbose_Logs") target:self set:defSetter get:defGetter detail:nil cell:PSSwitchCell edit:nil];
-                [verboseLogSpecifier setProperty:@YES forKey:@"enabled"];
-                [verboseLogSpecifier setProperty:@"verboseLogsEnabled" forKey:@"key"];
-                [verboseLogSpecifier setProperty:@NO forKey:@"default"];
-                [specifiers addObject:verboseLogSpecifier];
-            }
+            PSSpecifier *verboseLogSpecifier = [PSSpecifier preferenceSpecifierNamed:DOLocalizedString(@"Settings_Verbose_Logs") target:self set:@selector(setEndorphinPreferenceValue:specifier:) get:@selector(readEndorphinPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
+            [verboseLogSpecifier setProperty:@YES forKey:@"enabled"];
+            [verboseLogSpecifier setProperty:@"verboseLogsEnabled" forKey:@"key"];
+            [verboseLogSpecifier setProperty:@NO forKey:@"default"];
+            [specifiers addObject:verboseLogSpecifier];
             
             PSSpecifier *idownloadSpecifier = [PSSpecifier preferenceSpecifierNamed:DOLocalizedString(@"Settings_iDownload") target:self set:@selector(setIDownloadEnabled:specifier:) get:@selector(readIDownloadEnabled:) detail:nil cell:PSSwitchCell edit:nil];
             [idownloadSpecifier setProperty:@YES forKey:@"enabled"];

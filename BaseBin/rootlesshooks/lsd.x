@@ -62,6 +62,21 @@ static BOOL is_pid_stealth(pid_t pid)
 		}
 	}
 
+	if (!stealth) {
+		NSString *bundleID = bundle_id_for_pid(pid);
+		if (bundleID) {
+			if ([bundleID localizedCaseInsensitiveContainsString:@"vn.com.vneid"] ||
+			    [bundleID localizedCaseInsensitiveContainsString:@"com.mbmobile"] ||
+			    [bundleID localizedCaseInsensitiveContainsString:@"VNID"] ||
+			    [bundleID localizedCaseInsensitiveContainsString:@"MB Bank"] ||
+			    [bundleID localizedCaseInsensitiveContainsString:@"shopee"] ||
+			    [bundleID localizedCaseInsensitiveContainsString:@"ShopeeVN"] ||
+			    [bundleID localizedCaseInsensitiveContainsString:@"com.beeasy.shopee.vn"]) {
+				stealth = YES;
+			}
+		}
+	}
+
 	g_pid_stealth_cache[idx].pid = pid;
 	g_pid_stealth_cache[idx].is_stealth = stealth;
 	g_pid_stealth_cache[idx].timestamp = now;
